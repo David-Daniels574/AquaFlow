@@ -1,0 +1,30 @@
+<svg width="300" height="200" viewBox="0 0 300 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="300" height="200" fill="#f0fdf4"/>
+  
+  <!-- House -->
+  <rect x="50" y="100" width="80" height="60" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1"/>
+  <polygon points="50,100 90,70 130,100" fill="#dc2626" stroke="#991b1b" stroke-width="1"/>
+  
+  <!-- Rainwater collection system -->
+  <rect x="60" y="80" width="60" height="20" fill="#6b7280"/>
+  <rect x="80" y="100" width="20" height="40" fill="#6b7280"/>
+  
+  <!-- Water tank -->
+  <rect x="200" y="120" width="40" height="40" fill="#3b82f6" opacity="0.8"/>
+  <rect x="200" y="120" width="40" height="20" fill="#1e40af"/>
+  
+  <!-- Rain drops -->
+  <path d="M30 30 L35 40" stroke="#3b82f6" stroke-width="2" opacity="0.7"/>
+  <path d="M50 20 L55 30" stroke="#3b82f6" stroke-width="2" opacity="0.7"/>
+  <path d="M70 35 L75 45" stroke="#3b82f6" stroke-width="2" opacity="0.7"/>
+  <path d="M90 25 L95 35" stroke="#3b82f6" stroke-width="2" opacity="0.7"/>
+  <path d="M110 30 L115 40" stroke="#3b82f6" stroke-width="2" opacity="0.7"/>
+  
+  <!-- Title -->
+  <text x="150" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#1e40af" font-weight="bold">Rainwater Harvesting</text>
+  
+  <!-- Decorative elements -->
+  <circle cx="250" cy="50" r="2" fill="#3b82f6" opacity="0.6"/>
+  <circle cx="270" cy="70" r="2" fill="#3b82f6" opacity="0.6"/>
+</svg>

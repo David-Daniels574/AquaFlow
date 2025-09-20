@@ -1,0 +1,22 @@
+<svg width="400" height="300" viewBox="0 0 400 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="300" fill="#f0f9ff"/>
+  
+  <!-- Water drop -->
+  <path d="M200 50 C 180 50, 160 70, 160 100 C 160 130, 180 150, 200 150 C 220 150, 240 130, 240 100 C 240 70, 220 50, 200 50 Z" fill="#3b82f6" opacity="0.8"/>
+  
+  <!-- Ripple circles -->
+  <circle cx="200" cy="150" r="30" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.6"/>
+  <circle cx="200" cy="150" r="50" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.4"/>
+  <circle cx="200" cy="150" r="70" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.2"/>
+  
+  <!-- Water conservation text -->
+  <text x="200" y="200" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" fill="#1e40af" font-weight="bold">Water Conservation</text>
+  <text x="200" y="220" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#64748b">Every Drop Counts</text>
+  
+  <!-- Decorative elements -->
+  <circle cx="100" cy="80" r="3" fill="#3b82f6" opacity="0.6"/>
+  <circle cx="300" cy="120" r="3" fill="#3b82f6" opacity="0.6"/>
+  <circle cx="80" cy="200" r="3" fill="#3b82f6" opacity="0.6"/>
+  <circle cx="320" cy="180" r="3" fill="#3b82f6" opacity="0.6"/>
+</svg>
