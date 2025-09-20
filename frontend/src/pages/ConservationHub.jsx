@@ -9,14 +9,19 @@ import LearnSection from "../components/learn-section"
 import ChallengesSection from "../components/challenges-section"
 import Footer from "../components/footer"
 
-export default function HomePage() {
+export default function ConservationHub({ currentPage, onPageChange }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
       <div className="flex">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          onClose={() => setSidebarOpen(false)}
+          currentPage={currentPage}
+          onPageChange={onPageChange}
+        />
         <main className="flex-1 p-6">
           <HeroSection />
           <ProgressSection />
