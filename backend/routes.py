@@ -513,9 +513,23 @@ def society_dashboard():
     """
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
+    
+    # Check if user exists
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+        
+    # Check if user has a society association
+    if user.society_id is None:
+        # Return empty dashboard data instead of error
+        return jsonify({
+            'monthly_consumption': {},
+            'total_consumption': 0,
+            'average_daily': 0,
+            'message': 'No society associated with this user. Please contact an administrator.'
+        }), 200
+    
+    # Get society_id for further processing
     society_id = user.society_id
-    if not society_id:
-        return jsonify({'error': 'No society associated'}), 400
     
     now = datetime.utcnow()
     current_year = now.year

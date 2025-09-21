@@ -5,9 +5,41 @@ import { ConsumptionChart } from "@/components/conservation/ConsumptionChart";
 import { ConservationImpactChart } from "@/components/conservation/ConservationImpactChart";
 import { UpcomingDeliveries } from "@/components/conservation/UpcomingDeliveries";
 import { CommunicationHub } from "@/components/conservation/CommunicationHub";
-import { conservationKPIs } from "@/data/conservationData";
+import { useSocietyDashboard } from "@/hooks/useAPI";
 
 export default function SocietyDashboardPage() {
+  const { data: dashboardData, isLoading, error } = useSocietyDashboard();
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold text-foreground">Society Management Dashboard</h1>
+          <p className="text-muted-foreground">Loading dashboard data...</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, index) => (
+            <div key={index} className="h-32 bg-gray-200 animate-pulse rounded-lg"></div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold text-foreground">Society Management Dashboard</h1>
+          <p className="text-red-500">Failed to load dashboard data. Please try again later.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Calculate current month consumption from monthly data
+  const currentMonth = new Date().getMonth() + 1;
+  const currentMonthConsumption = dashboardData?.monthly_consumption?.[currentMonth] || 0;
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
@@ -26,30 +58,30 @@ export default function SocietyDashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard
           title="Monthly Consumption"
-          value={conservationKPIs.monthlyConsumption.value}
-          unit={conservationKPIs.monthlyConsumption.unit}
-          trend={conservationKPIs.monthlyConsumption.trend}
+          value={(currentMonthConsumption / 1000).toFixed(1)}
+          unit="KL"
+          trend="up"
           icon={DropletIcon}
         />
         <KPICard
           title="Tankers Ordered YTD"
-          value={conservationKPIs.tankersOrderedYTD.value}
-          unit={conservationKPIs.tankersOrderedYTD.unit}
-          trend={conservationKPIs.tankersOrderedYTD.trend}
+          value={dashboardData?.tankers_ordered_ytd?.toString() || "0"}
+          unit=""
+          trend="up"
           icon={Truck}
         />
         <KPICard
           title="Active Initiatives"
-          value={conservationKPIs.activeInitiatives.value}
-          unit={conservationKPIs.activeInitiatives.unit}
-          trend={conservationKPIs.activeInitiatives.trend}
+          value={dashboardData?.active_initiatives?.toString() || "0"}
+          unit=""
+          trend="stable"
           icon={Target}
         />
         <KPICard
           title="Water Saved (Approx)"
-          value={conservationKPIs.waterSaved.value}
-          unit={conservationKPIs.waterSaved.unit}
-          trend={conservationKPIs.waterSaved.trend}
+          value={(dashboardData?.water_saved || 0).toLocaleString()}
+          unit="L"
+          trend="up"
           icon={Leaf}
         />
       </div>

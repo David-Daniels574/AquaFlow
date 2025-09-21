@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from "recharts";
 import { ChartContainer } from "@/components/ui/chart";
-import { conservationImpactData } from "@/data/conservationData";
+import { useSocietyDashboard } from "@/hooks/useAPI";
 
 const chartConfig = {
   activeInitiatives: {
@@ -25,6 +25,36 @@ const COLORS = [
 ];
 
 export function ConservationImpactChart() {
+  const { data: dashboardData, isLoading, error } = useSocietyDashboard();
+
+  if (isLoading) {
+    return (
+      <Card className="p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-foreground">Conservation Impact</h3>
+        </div>
+        <div className="h-[200px] bg-gray-200 animate-pulse rounded"></div>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card className="p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-foreground">Conservation Impact</h3>
+        </div>
+        <p className="text-red-500">Failed to load conservation data.</p>
+      </Card>
+    );
+  }
+
+  const conservationImpactData = [
+    { name: "Active Initiatives", value: dashboardData?.conservation_impact?.active || 0, color: "hsl(210, 100%, 50%)" },
+    { name: "Pending Initiatives", value: dashboardData?.conservation_impact?.pending || 0, color: "hsl(38, 92%, 50%)" },
+    { name: "Completed Initiatives", value: dashboardData?.conservation_impact?.completed || 0, color: "hsl(0, 84%, 60%)" }
+  ];
+
   const renderCustomLabel = (entry: any) => {
     return `${entry.value}%`;
   };

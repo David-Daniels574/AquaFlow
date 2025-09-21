@@ -1,11 +1,26 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Droplet } from "lucide-react";
+import { Search, Droplet, User } from "lucide-react";
 import { motion } from "framer-motion";
+import { getAuthToken, clearAuthToken } from "@/services/api";
+import { useState, useEffect } from "react";
 
 export function Header() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    setIsAuthenticated(!!token);
+  }, [location]);
+
+  const handleLogout = () => {
+    clearAuthToken();
+    setIsAuthenticated(false);
+    navigate("/login");
+  };
 
   const navItems = [
     { name: "Water Tanker Marketplace", path: "/marketplace" },
@@ -52,12 +67,41 @@ export function Header() {
           </div>
           
           <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm" className="border-white/20 text-black hover:bg-white/10">
-              Login
-            </Button>
-            <Button variant="secondary" size="sm" className="bg-white text-primary hover:bg-white/90">
-              Sign Up
-            </Button>
+            {isAuthenticated ? (
+              <>
+                <Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10">
+                  <User className="h-4 w-4 mr-2" />
+                  Profile
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  className="bg-white text-primary hover:bg-white/90"
+                  onClick={handleLogout}
+                >
+                  Logout
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-white/20 text-white hover:bg-white/10"
+                  onClick={() => navigate("/login")}
+                >
+                  Login
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  className="bg-white text-primary hover:bg-white/90"
+                  onClick={() => navigate("/register")}
+                >
+                  Sign Up
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>
