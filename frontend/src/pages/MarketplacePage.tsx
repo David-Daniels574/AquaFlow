@@ -1,10 +1,12 @@
 import { FilterPanel } from "@/components/marketplace/FilterPanel";
 import { TankerGrid } from "@/components/marketplace/TankerGrid";
 import { TankerMap } from "@/components/marketplace/TankerMap";
-import { motion } from "framer-motion";
+import Checkout from "@/components/marketplace/Checkout";
+import { motion, AnimatePresence } from "framer-motion";
 import { createContext, useState, useEffect } from "react";
 import { Supplier } from "@/services/api";
 import { useSuppliers } from "@/hooks/useAPI";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 // Create filter context
 export const FilterContext = createContext<{
@@ -53,6 +55,11 @@ export default function MarketplacePage() {
   
   // State for filtered suppliers
   const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([]);
+  
+  // State for checkout
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [bookingId, setBookingId] = useState<string>("");
   
   // Get all suppliers from API
   const { data: allSuppliers, isLoading } = useSuppliers();
@@ -179,9 +186,52 @@ export default function MarketplacePage() {
             className="flex-1 space-y-6"
           >
             <TankerMap />
-            <TankerGrid />
+            <TankerGrid
+              onBookNow={(supplier) => {
+                setSelectedSupplier(supplier);
+                // Generate a temporary booking ID
+                setBookingId(`booking_${Date.now()}_${supplier.id}`);
+                setShowCheckout(true);
+              }}
+            />
           </motion.div>
         </div>
+
+        {/* Payment Dialog */}
+        <Dialog open={showCheckout} onOpenChange={setShowCheckout}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Complete Your Booking</DialogTitle>
+            </DialogHeader>
+            {selectedSupplier && (
+              <div className="space-y-4">
+                <div className="p-4 bg-muted rounded-lg">
+                  <h3 className="font-semibold">{selectedSupplier.name}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedSupplier.area}, {selectedSupplier.city}
+                  </p>
+                  <p className="text-lg font-bold mt-2">
+                    ₹{selectedSupplier.starting_from || selectedSupplier.offers?.[0]?.cost || 1500}
+                  </p>
+                </div>
+                <Checkout
+                  amount={selectedSupplier.starting_from || selectedSupplier.offers?.[0]?.cost || 1500}
+                  bookingId={bookingId}
+                  supplier={selectedSupplier}
+                  onSuccess={() => {
+                    setShowCheckout(false);
+                    setSelectedSupplier(null);
+                    // You can add a success toast here
+                  }}
+                  onCancel={() => {
+                    setShowCheckout(false);
+                    setSelectedSupplier(null);
+                  }}
+                />
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </FilterContext.Provider>
   );

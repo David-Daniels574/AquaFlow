@@ -5,6 +5,10 @@ from auth import register_user, login_user
 from utils import get_consumption_reports, calculate_eta, get_road_metrics
 from datetime import datetime, timedelta
 from collections import defaultdict
+import stripe 
+
+
+stripe.api_key = "sk_test_51SjnuaBEWvMNoTR0k8UlgWpxdg4PQBqpQYyCwO05X3GvRsUg6ypURmOFQuq9XSAraxR5uudZ6iZa8f9K5DiLYg4g00Cp0HDle0"
 
 api = Blueprint('api', __name__)
 
@@ -733,3 +737,45 @@ def handle_comments(thread_id):
         db.session.add(new_comment)
         db.session.commit()
         return jsonify({'message': 'Comment added'}), 201
+    
+@api.route("/create-payment-intent", methods=["POST"])
+@jwt_required()
+def create_payment_intent():
+    """
+    Create a Stripe payment intent for water tanker booking.
+    """
+    try:
+        user_id = int(get_jwt_identity())
+        data = request.json
+        
+        # Validate required fields
+        if not data.get("amount") or not data.get("booking_id"):
+            return jsonify({"error": "Missing required fields: amount and booking_id"}), 400
+        
+        amount = float(data["amount"])  # amount in rupees
+        booking_id = data["booking_id"]
+        
+        # Validate amount
+        if amount <= 0:
+            return jsonify({"error": "Invalid amount"}), 400
+        
+        # Create payment intent
+        intent = stripe.PaymentIntent.create(
+            amount=int(amount * 100),  # convert to paise
+            currency="inr",
+            payment_method_types=["card"],
+            metadata={
+                "booking_id": booking_id,
+                "user_id": user_id
+            }
+        )
+        
+        return jsonify({
+            "clientSecret": intent.client_secret
+        }), 200
+        
+    except ValueError as e:
+        return jsonify({"error": "Invalid amount format"}), 400
+    except Exception as e:
+        print(f"Stripe payment intent error: {e}")
+        return jsonify({"error": "Failed to create payment intent"}), 500

@@ -3,9 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Star, MapPin, Clock } from "lucide-react";
 import { motion } from "framer-motion";
-import { useSuppliers, useBookTanker } from "@/hooks/useAPI";
-import { useState, useContext } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { useSuppliers } from "@/hooks/useAPI";
+import { useContext } from "react";
 import { FilterContext } from "@/pages/MarketplacePage";
 import tankerImg from "./s-1.png"; 
 import tankerIms from "./s-2.png";
@@ -13,50 +12,20 @@ import tankerImt from "./s-3.png";
 import tankerImu from "./s-4.png";
 import tankerImv from "./s-5.png";
 import tankerImz from "./s-6.png";
+import { Supplier } from "@/services/api";
 
 // Map supplier IDs to images for fallback
 const supplierImages = [tankerImg, tankerIms, tankerImt, tankerImu, tankerImv, tankerImz];
+interface TankerGridProps {
+  onBookNow: (supplier: Supplier) => void;
+}
 
-export function TankerGrid() {
+export function TankerGrid({ onBookNow }: TankerGridProps) {
   const { data: allSuppliers, isLoading, error } = useSuppliers();
   const { filteredSuppliers } = useContext(FilterContext);
-  const bookTankerMutation = useBookTanker();
-  const { toast } = useToast();
-  const [bookingSupplier, setBookingSupplier] = useState<number | null>(null);
   
   // Use filtered suppliers if they exist, otherwise use all suppliers
   const suppliers = filteredSuppliers.length > 0 ? filteredSuppliers : (allSuppliers || []);
-  
-  const handleBookTanker = async (supplier: any) => {
-    try {
-      setBookingSupplier(supplier.id);
-      
-      // Get the first offer or use default values
-      const offer = supplier.offers && supplier.offers.length > 0 
-        ? supplier.offers[0] 
-        : { quantity: 500, cost: supplier.starting_from || 1500 };
-      
-      await bookTankerMutation.mutateAsync({
-        supplier_id: supplier.id,
-        volume: offer.quantity,
-        price: offer.cost
-      });
-      
-      toast({
-        title: "Booking Successful",
-        description: `Your water tanker from ${supplier.name} has been booked successfully.`,
-      });
-    } catch (error) {
-      console.error("Booking error:", error);
-      toast({
-        title: "Booking Failed",
-        description: "There was an error booking your tanker. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setBookingSupplier(null);
-    }
-  };
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -142,10 +111,9 @@ export function TankerGrid() {
                 
                 <Button 
                   className="w-full bg-primary hover:bg-primary-hover"
-                  onClick={() => handleBookTanker(supplier)}
-                  disabled={bookingSupplier === supplier.id}
+                  onClick={() => onBookNow(supplier)}
                 >
-                  {bookingSupplier === supplier.id ? "Booking..." : "Book Now"}
+                  Book Now
                 </Button>
               </CardContent>
             </Card>
