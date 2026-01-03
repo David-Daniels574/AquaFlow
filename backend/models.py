@@ -12,7 +12,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), index=True, unique=True, nullable=False)
     email = db.Column(db.String(120), index=True, unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'user', 'supplier', 'society_admin'
     society_id = db.Column(db.Integer, db.ForeignKey('society.id'))
     area = db.Column(db.String(128))
@@ -197,3 +197,12 @@ class ThreadComment(db.Model):
 
     def __repr__(self):
         return f'<Comment {self.id}>'
+    
+# Add this to backend/models.py
+class SocietyMonthlySummary(db.Model):
+    __tablename__ = 'society_monthly_summary'
+    # Composite PK for SQLAlchemy mapping
+    society_id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, primary_key=True)
+    month = db.Column(db.Integer, primary_key=True)
+    total_consumption = db.Column(db.Float)

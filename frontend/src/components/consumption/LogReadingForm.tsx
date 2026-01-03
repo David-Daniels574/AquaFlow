@@ -9,7 +9,8 @@ import { format } from "date-fns";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/services/api";
+// IMPORT YOUR API HELPER
+import { consumptionAPI } from "@/services/api"; 
 
 export function LogReadingForm() {
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -29,10 +30,11 @@ export function LogReadingForm() {
       return;
     }
 
-    if (isNaN(parseFloat(reading)) || parseFloat(reading) <= 0) {
+    const readingValue = parseFloat(reading);
+    if (isNaN(readingValue) || readingValue <= 0) {
       toast({
         title: "Error",
-        description: "Please enter a valid positive number for the reading",
+        description: "Please enter a valid positive number",
         variant: "destructive",
       });
       return;
@@ -41,12 +43,11 @@ export function LogReadingForm() {
     setIsSubmitting(true);
     
     try {
-      const response = await apiRequest('/log_reading', {
-        method: 'POST',
-        body: JSON.stringify({
-          reading: parseFloat(reading),
-          timestamp: date.toISOString()
-        })
+      // USE THE HELPER FUNCTION
+      // FIX: Replace 'Z' with '+00:00' to prevent Python errors
+      await consumptionAPI.logReading({
+        reading: readingValue,
+        timestamp: date.toISOString().replace('Z', '+00:00')
       });
       
       toast({
@@ -54,25 +55,21 @@ export function LogReadingForm() {
         description: "Water reading logged successfully",
       });
       
-      // Reset form
       setReading("");
     } catch (error) {
+      console.error("Error logging reading:", error);
       toast({
         title: "Error",
-        description: "Failed to log reading. Please try again.",
+        description: "Failed to log reading. Check your connection.",
         variant: "destructive",
       });
-      console.error("Error logging reading:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <motion.div
-      initial={{ x: -20, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-    >
+    <motion.div initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
       <Card>
         <CardHeader>
           <CardTitle>Log New Reading</CardTitle>

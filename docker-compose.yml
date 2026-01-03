@@ -1,0 +1,73 @@
+services:
+  # --- Web Layer ---
+  backend:
+    build: ./backend
+    container_name: water_mgmt_backend
+    restart: always
+    ports:
+      - "5001:5001"
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/waterdb
+      - FLASK_ENV=production
+    depends_on:
+      - db
+    networks:
+      - water_network
+
+  # --- Database Layer ---
+  db:
+    image: postgres:13-alpine
+    container_name: water_mgmt_db
+    restart: always
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=waterdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - water_network
+
+# --- Spark Master ---
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: spark_master
+    # CHANGE 1: Add volumes to mount code and jars
+    volumes:
+      - ./spark_libs:/opt/spark/jars_external
+      - ./analytics:/opt/analytics
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - water_network
+
+  # --- Spark Worker ---
+  spark-worker:
+    image: apache/spark:3.5.0
+    container_name: spark_worker
+    # CHANGE 2: Worker also needs access to the JARs
+    volumes:
+      - ./spark_libs:/opt/spark/jars_external
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    depends_on:
+      - spark-master
+    networks:
+      - water_network
+
+networks:
+  water_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

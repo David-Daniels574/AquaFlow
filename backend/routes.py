@@ -1,14 +1,18 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from models import db, User, Supplier, TankerOrder, WaterReading, ConservationTip, Society, SupplierOffer, Challenge, UserChallenge, Broadcast, DiscussionThread, ThreadComment
+from models import db, User, Supplier, TankerOrder, WaterReading, ConservationTip, Society, SupplierOffer, Challenge, UserChallenge, Broadcast, DiscussionThread, ThreadComment, SocietyMonthlySummary
 from auth import register_user, login_user
 from utils import get_consumption_reports, calculate_eta, get_road_metrics
 from datetime import datetime, timedelta
 from collections import defaultdict
 import stripe 
+from dotenv import load_dotenv
+import os
+from sqlalchemy import func, distinct
 
+load_dotenv()
 
-stripe.api_key = "sk_test_51SjnuaBEWvMNoTR0k8UlgWpxdg4PQBqpQYyCwO05X3GvRsUg6ypURmOFQuq9XSAraxR5uudZ6iZa8f9K5DiLYg4g00Cp0HDle0"
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 api = Blueprint('api', __name__)
 
@@ -51,47 +55,80 @@ def login():
 @jwt_required()
 def profile():
     """
-    Get or update user profile.
+    GET  -> Fetch comprehensive user profile (for UI display)
+    PUT  -> Update editable profile fields
     """
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
+
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    if request.method == 'GET':
-        return jsonify({
-            'username': user.username,
-            'email': user.email,
-            'role': user.role,
-            'society_id': user.society_id,
-            'area': user.area,
-            'city': user.city,
-            'lat': user.lat,
-            'long': user.long
-        }), 200
+    # -------------------------
+    # UPDATE PROFILE (PUT)
+    # -------------------------
+    if request.method == 'PUT':
+        data = request.json or {}
+        updated = False
 
-    data = request.json
-    updated = False
-    if 'area' in data:
-        user.area = data['area']
-        updated = True
-    if 'city' in data:
-        user.city = data['city']
-        updated = True
-    if 'lat' in data:
-        user.lat = float(data['lat'])
-        updated = True
-    if 'long' in data:
-        user.long = float(data['long'])
-        updated = True
-    if updated:
+        if 'area' in data:
+            user.area = data['area']
+            updated = True
+
+        if 'city' in data:
+            user.city = data['city']
+            updated = True
+
+        if 'lat' in data:
+            user.lat = float(data['lat'])
+            updated = True
+
+        if 'long' in data:
+            user.long = float(data['long'])
+            updated = True
+
+        if not updated:
+            return jsonify({'message': 'No updates provided'}), 200
+
         try:
             db.session.commit()
-            return jsonify({'message': 'Profile updated'}), 200
+            return jsonify({'message': 'Profile updated successfully'}), 200
         except Exception as e:
             db.session.rollback()
             return jsonify({'error': str(e)}), 500
-    return jsonify({'message': 'No updates provided'}), 200
+
+    # -------------------------
+    # FETCH PROFILE (GET)
+    # -------------------------
+    society_name = "Not Assigned"
+    society_address = None
+
+    if user.society_id:
+        society = Society.query.get(user.society_id)
+        if society:
+            society_name = society.name
+            society_address = society.address
+
+    return jsonify({
+        'personal_info': {
+            'username': user.username,
+            'email': user.email,
+            'role': user.role
+        },
+        'location_info': {
+            'area': user.area,
+            'city': user.city,
+            'coordinates': {
+                'lat': user.lat,
+                'long': user.long
+            }
+        },
+        'society_info': {
+            'id': user.society_id,
+            'name': society_name,
+            'address': society_address
+        }
+    }), 200
 
 @api.route('/suppliers', methods=['GET'])
 @jwt_required()
@@ -225,6 +262,12 @@ def log_reading():
     Log a water meter reading.
     """
     user_id = int(get_jwt_identity())
+    
+    # FIX 1: Fetch the user object to get their correct Society ID
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
     data = request.json
     required_fields = ['reading']
     missing_fields = [field for field in required_fields if field not in data]
@@ -243,18 +286,22 @@ def log_reading():
         except ValueError:
             return jsonify({'error': 'Invalid timestamp format'}), 400
     
+    # FIX 2: Use user.society_id instead of data.get('society_id')
     reading = WaterReading(
         user_id=user_id,
         reading=reading_value,
-        society_id=data.get('society_id'),
+        society_id=user.society_id,  # <-- Automatically link to user's society
         timestamp=timestamp
     )
+
     try:
         db.session.add(reading)
         db.session.commit()
         return jsonify({'message': 'Reading logged'}), 201
     except Exception as e:
         db.session.rollback()
+        # This will now print the specific database error if it still fails
+        print(f"Database Error: {e}") 
         return jsonify({'error': str(e)}), 500
 
 @api.route('/consumption_report', methods=['GET'])
@@ -469,104 +516,82 @@ def society_bulk_order():
 @jwt_required()
 def society_dashboard():
     """
-    Get society management dashboard data (accessible by users with society_id).
+    Get society management dashboard data using Spark Aggregates.
     """
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
     
-    # Check if user exists
     if not user:
         return jsonify({'error': 'User not found'}), 404
-        
-    # Check if user has a society association
     if user.society_id is None:
-        # Return empty dashboard data instead of error
-        return jsonify({
-            'monthly_consumption': {},
-            'total_consumption': 0,
-            'average_daily': 0,
-            'message': 'No society associated with this user. Please contact an administrator.'
-        }), 200
+        return jsonify({'message': 'No society associated'}), 200
     
-    # Get society_id for further processing
     society_id = user.society_id
-    
-    now = datetime.utcnow()
-    current_year = now.year
+    current_year = datetime.utcnow().year
     y_start = datetime(current_year, 1, 1)
-    
-    # Monthly consumption for the year
-    monthly_consumption = {}
+
+    # --- 1. Monthly Consumption (POWERED BY SPARK) ---
+    # Query the summary table directly. 
+    # No more looping through millions of WaterReading rows!
+    spark_summaries = SocietyMonthlySummary.query.filter_by(
+        society_id=society_id,
+        year=current_year
+    ).all()
+
+    # Convert to dictionary { month_int: total_float }
+    monthly_consumption = {row.month: row.total_consumption for row in spark_summaries}
+
+    # Fill missing months with 0
     for m in range(1, 13):
-        start = datetime(current_year, m, 1)
-        next_month = m + 1 if m < 12 else 1
-        year_next = current_year if m < 12 else current_year + 1
-        end = datetime(year_next, next_month, 1)
-        readings = WaterReading.query.filter(
-            WaterReading.society_id == society_id,
-            WaterReading.timestamp >= start,
-            WaterReading.timestamp < end
-        ).order_by(WaterReading.timestamp).all()
-        if readings:
-            user_readings = defaultdict(list)
-            for r in readings:
-                user_readings[r.user_id].append(r)
-            total_cons = 0.0
-            for urs in user_readings.values():
-                urs.sort(key=lambda x: x.timestamp)
-                for i in range(1, len(urs)):
-                    total_cons += urs[i].reading - urs[i-1].reading
-            monthly_consumption[m] = total_cons
-        else:
+        if m not in monthly_consumption:
             monthly_consumption[m] = 0.0
+
+    # --- 2. Lightweight Queries (Can stay as standard SQL) ---
     
-    # Tankers ordered YTD
+    # Tankers Ordered YTD
     orders = TankerOrder.query.filter(
         TankerOrder.society_id == society_id,
         TankerOrder.order_time >= y_start
     ).all()
     tankers_ytd = len(orders)
     total_volume_ytd = sum(o.volume for o in orders)
-    
-    # Get society users
-    society_users = User.query.filter_by(society_id=society_id).all()
+
+    # Active Initiatives & Water Saved
+    # These tables are usually small, so standard SQL is fine.
+    society_users = User.query.filter_by(society_id=society_id).with_entities(User.id).all()
     user_ids = [u.id for u in society_users]
-    
-    # Water saved (approx)
-    water_saved = db.session.query(db.func.sum(UserChallenge.water_saved)).filter(
-        UserChallenge.user_id.in_(user_ids)
-    ).scalar() or 0.0
-    
-    # Active initiatives (distinct challenges active in society)
-    active_initiatives = db.session.query(db.func.count(db.distinct(UserChallenge.challenge_id))).filter(
-        UserChallenge.user_id.in_(user_ids),
-        UserChallenge.status == 'active'
-    ).scalar()
-    
-    # Conservation impact percentages
-    total_ucs = UserChallenge.query.filter(UserChallenge.user_id.in_(user_ids)).count()
+
+    water_saved = 0.0
+    active_initiatives = 0
     percs = {'active': 0, 'pending': 0, 'completed': 0}
-    if total_ucs > 0:
-        active_count = UserChallenge.query.filter(
-            UserChallenge.user_id.in_(user_ids), UserChallenge.status == 'active'
-        ).count()
-        pending_count = UserChallenge.query.filter(
-            UserChallenge.user_id.in_(user_ids), UserChallenge.status == 'pending'
-        ).count()
-        completed_count = UserChallenge.query.filter(
-            UserChallenge.user_id.in_(user_ids), UserChallenge.status == 'completed'
-        ).count()
-        percs = {
-            'active': (active_count / total_ucs) * 100,
-            'pending': (pending_count / total_ucs) * 100,
-            'completed': (completed_count / total_ucs) * 100
-        }
-    
-    # Scheduled tanker deliveries
+
+    if user_ids:
+        water_saved = db.session.query(func.sum(UserChallenge.water_saved))\
+            .filter(UserChallenge.user_id.in_(user_ids)).scalar() or 0.0
+            
+        active_initiatives = db.session.query(func.count(distinct(UserChallenge.challenge_id)))\
+            .filter(UserChallenge.user_id.in_(user_ids), UserChallenge.status == 'active').scalar()
+
+        # Impact Percentages
+        total_ucs = UserChallenge.query.filter(UserChallenge.user_id.in_(user_ids)).count()
+        if total_ucs > 0:
+            counts = db.session.query(
+                UserChallenge.status, func.count(UserChallenge.status)
+            ).filter(UserChallenge.user_id.in_(user_ids)).group_by(UserChallenge.status).all()
+            
+            # Convert list of tuples [('active', 5), ('pending', 2)] to dict
+            counts_dict = {status: count for status, count in counts}
+            
+            percs['active'] = (counts_dict.get('active', 0) / total_ucs) * 100
+            percs['pending'] = (counts_dict.get('pending', 0) / total_ucs) * 100
+            percs['completed'] = (counts_dict.get('completed', 0) / total_ucs) * 100
+
+    # Scheduled Deliveries
     pending_orders = TankerOrder.query.filter(
         TankerOrder.society_id == society_id,
         TankerOrder.status.in_(['pending', 'en_route'])
     ).all()
+    
     deliveries = []
     for o in pending_orders:
         sup = Supplier.query.get(o.supplier_id)
@@ -577,7 +602,7 @@ def society_dashboard():
             'volume': o.volume,
             'status': o.status
         })
-    
+
     return jsonify({
         'monthly_consumption': monthly_consumption,
         'tankers_ordered_ytd': tankers_ytd,
@@ -588,48 +613,6 @@ def society_dashboard():
         'scheduled_deliveries': deliveries
     }), 200
     
-@api.route('/user_details', methods=['GET'])
-@jwt_required()
-def get_user_details():
-    """
-    Get comprehensive user profile information for UI display.
-    """
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-
-    # Fetch the actual Society Name instead of just the ID
-    society_name = "Not Assigned"
-    society_address = None
-    
-    if user.society_id:
-        society = Society.query.get(user.society_id)
-        if society:
-            society_name = society.name
-            society_address = society.address
-
-    return jsonify({
-        'personal_info': {
-            'username': user.username,
-            'email': user.email,
-            'role': user.role, # 'user', 'supplier', or 'society_admin'
-        },
-        'location_info': {
-            'area': user.area,
-            'city': user.city,
-            'coordinates': {
-                'lat': user.lat,
-                'long': user.long
-            }
-        },
-        'society_info': {
-            'id': user.society_id,
-            'name': society_name,
-            'address': society_address
-        }
-    }), 200
 
 @api.route('/community/broadcasts', methods=['GET', 'POST'])
 @jwt_required()
