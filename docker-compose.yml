@@ -1,4 +1,13 @@
 services:
+  # --- Caching Layer ---
+  redis:
+    image: redis:alpine
+    container_name: water_mgmt_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - water_network
+
   # --- Web Layer ---
   backend:
     build: ./backend
@@ -11,8 +20,10 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/waterdb
       - FLASK_ENV=production
+      - REDIS_URL=redis://redis:6379/0  
     depends_on:
       - db
+      - redis
     networks:
       - water_network
 

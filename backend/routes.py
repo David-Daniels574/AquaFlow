@@ -9,6 +9,7 @@ import stripe
 from dotenv import load_dotenv
 import os
 from sqlalchemy import func, distinct
+from app import cache,db
 
 load_dotenv()
 
@@ -132,6 +133,7 @@ def profile():
 
 @api.route('/suppliers', methods=['GET'])
 @jwt_required()
+@cache.cached(timeout=360, key_prefix=lambda: f"suppliers:{get_jwt_identity()}")
 def get_suppliers():
     """
     Get list of verified suppliers with details.

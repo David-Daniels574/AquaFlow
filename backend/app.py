@@ -7,7 +7,7 @@ from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from config import Config
-from models import db
+from models import db,cache
 from routes import api
 
 app = Flask(__name__)
@@ -15,6 +15,7 @@ app.config.from_object(Config)
 
 # Initialize extensions
 db.init_app(app)
+cache.init_app(app)
 jwt = JWTManager(app)
 CORS(app)
 

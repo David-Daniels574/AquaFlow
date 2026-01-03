@@ -8,3 +8,5 @@ gunicorn
 psycopg2-binary
 datetime
 stripe
+Flask-Caching
+redis

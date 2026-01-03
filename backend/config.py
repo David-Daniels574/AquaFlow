@@ -24,3 +24,6 @@ class Config:
     
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'your-jwt-secret-key'
+    CACHE_TYPE = "RedisCache"
+    CACHE_REDIS_URL = os.environ.get('REDIS_URL') or "redis://redis:6379/0"
+    CACHE_DEFAULT_TIMEOUT = 300  # Default cache life: 5 minutes
