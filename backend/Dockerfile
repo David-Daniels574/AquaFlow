@@ -21,9 +21,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Expose the port the app runs on
-EXPOSE 5001
+EXPOSE 5000
 
 # Command to run the application using Gunicorn (Production Server)
 # -w 4: Spawns 4 worker processes (Parallelism)
-# -b 0.0.0.0:5001: Binds to all network interfaces
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:5001", "app:app"]
+# -b 0.0.0.0:5000: Binds to all network interfaces
+CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:5000", "app:app"]

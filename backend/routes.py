@@ -17,6 +17,19 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 api = Blueprint('api', __name__)
 
+@api.route('/', methods=['GET'])
+def home():
+    return "<h1>Hello! Backend is ONLINE.</h1>", 200
+
+@api.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({
+        "status": "success",
+        "message": "Pong! The container is reachable.",
+        "port": 5000
+    }), 200
+
+
 @api.route('/register', methods=['POST'])
 def register():
     """

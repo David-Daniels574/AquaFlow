@@ -1,12 +1,24 @@
 import sys
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, month, year, sum as _sum, lag, to_date
+from pyspark.sql.functions import col, month, year, sum as _sum, lag
 from pyspark.sql.window import Window
 
 # --- CONFIGURATION ---
-# Ensure this matches the file you downloaded
-jar_path = "/opt/spark/jars_external/postgresql-42.7.8.jar"
+# In our new Dockerfile, we downloaded the JAR to /app/
+jar_path = "/app/postgresql.jar"
+
+# --- ENVIRONMENT VARIABLES ---
+# Get credentials from AWS Task Definition (or local .env)
+jdbc_url = os.environ.get("SPARK_JDBC_URL")
+db_user = os.environ.get("DB_USER")
+db_pass = os.environ.get("DB_PASS")
+
+# Safety check
+if not all([jdbc_url, db_user, db_pass]):
+    print("ERROR: Missing database environment variables (SPARK_JDBC_URL, DB_USER, DB_PASS).")
+    print("Ensure these are set in your AWS ECS Task Definition.")
+    sys.exit(1)
 
 # --- INIT SPARK ---
 spark = SparkSession.builder \
@@ -16,19 +28,17 @@ spark = SparkSession.builder \
     .config("spark.executor.extraClassPath", jar_path) \
     .getOrCreate()
 
-# --- DB CONNECTION ---
-db_url = "jdbc:postgresql://db:5432/waterdb"
+# --- DB PROPERTIES ---
 db_props = {
-    "user": "user", 
-    "password": "password", 
+    "user": db_user, 
+    "password": db_pass, 
     "driver": "org.postgresql.Driver"
 }
 
-print(">>> Reading data from PostgreSQL...")
+print(f">>> Connecting to Database: {jdbc_url.split('@')[0]}...") # Print safely (hide password)
+
 try:
-    df_readings = spark.read.jdbc(db_url, "water_reading", properties=db_props)
-    # We don't even need the user table anymore for this specific calculation
-    # df_users = spark.read.jdbc(db_url, "\"user\"", properties=db_props) 
+    df_readings = spark.read.jdbc(jdbc_url, "water_reading", properties=db_props)
 except Exception as e:
     print(f"Error reading from DB: {e}")
     sys.exit(1)
@@ -50,15 +60,18 @@ df_usage = df_with_lag.withColumn("usage", col("reading") - col("prev_reading"))
 # ---------------------------------------------------------
 print(">>> Processing Society Monthly Summary...")
 
-# FIX IS HERE: We use df_usage directly. It already has 'society_id'.
-# No join needed -> No ambiguity -> Faster performance.
+# Logic: Group by society, year, month -> Sum usage
 society_summary = df_usage.withColumn("month", month("timestamp")) \
                           .withColumn("year", year("timestamp")) \
                           .groupBy("society_id", "year", "month") \
                           .agg(_sum("usage").alias("total_consumption"))
 
 print(">>> Writing to Database...")
-society_summary.write.jdbc(db_url, "society_monthly_summary", mode="overwrite", properties=db_props)
+try:
+    society_summary.write.jdbc(jdbc_url, "society_monthly_summary", mode="overwrite", properties=db_props)
+    print(">>> Success! Batch Processing Complete.")
+except Exception as e:
+    print(f"Error writing to DB: {e}")
+    sys.exit(1)
 
-print(">>> Batch Processing Complete!")
 spark.stop()

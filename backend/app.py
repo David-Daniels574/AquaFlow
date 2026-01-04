@@ -5,7 +5,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import OperationalError, ProgrammingError, IntegrityError
 from config import Config
 from models import db,cache
 from routes import api
@@ -51,11 +51,11 @@ with app.app_context():
         # Note: In a real production DC system, use Flask-Migrate (Alembic)
         db.create_all()
         print("Tables created successfully (or already existed).")
-    except (OperationalError, ProgrammingError):
+    except (OperationalError, ProgrammingError, IntegrityError):
         # If another worker created the table while we were trying, 
         # the DB will throw an error. We safely ignore it here.
         print("Database tables already exist (Race Condition handled).")
 
 if __name__ == '__main__':
     # Use 0.0.0.0 to be accessible outside the container
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    app.run(debug=True, host='0.0.0.0', port=5000)
