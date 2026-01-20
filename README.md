@@ -2,11 +2,6 @@
 
 ### A Cloud-Native Distributed System for Utility Data Processing & Analytics
 
-![Status](https://img.shields.io/badge/Status-Production%20Ready-success)
-![AWS](https://img.shields.io/badge/AWS-ECS%20Fargate%20%7C%20RDS-orange)
-![Architecture](https://img.shields.io/badge/Architecture-Sidecar%20%26%20Batch-blueviolet)
-![Tech Stack](https://img.shields.io/badge/Stack-Flask%20%7C%20PySpark%20%7C%20PostgreSQL-blue)
-
 ---
 
 ## 📖 Overview
