@@ -1,12 +1,11 @@
-# 💧 Water Consumption Analytics Platform
+# 💧 Water Consumption Analytics Platform 
 
 ### A Cloud-Native Distributed System for Utility Data Processing & Analytics
-
 ---
 
 ## 📖 Overview
 
-The **Water Consumption Analytics Platform** is a scalable, cloud-native system designed to manage and analyze water usage data for large residential societies.
+The **Water Consumption Analytics Platform** is a scalable, cloud-native system designed to manage and analyze water usage data for large residential societies as well serve as a link between tanker operators and societies.
 
 Unlike traditional monolithic systems, this platform follows a **Microservices-based architecture** deployed on AWS, cleanly separating:
 
@@ -14,18 +13,6 @@ Unlike traditional monolithic systems, this platform follows a **Microservices-b
 - **Analytical workloads** (batch processing, aggregation, anomaly detection)
 
 This design ensures **high availability**, **cost efficiency**, and **performance isolation** between user-facing services and heavy computation.
-
----
-
-## 🎯 Key Capabilities
-
-- Secure user authentication & meter data ingestion
-- High-throughput REST APIs
-- Scheduled batch analytics using Apache Spark
-- Consumption delta computation (current − previous)
-- Monthly & daily aggregation reports
-- Redis-based low-latency caching
-- Cloud-native, containerized deployment
 
 ---
 
@@ -142,7 +129,7 @@ The system is deployed on **AWS ECS (Fargate)** using a **containerized microser
 - Triggered via AWS EventBridge (Cron-based scheduling)
 
 **Schedule**
-- Executes every **4 hours**
+- Executes every **24 hours**
 
 **Output Tables**
 - `DailyUsage`
@@ -159,10 +146,6 @@ The system is deployed on **AWS ECS (Fargate)** using a **containerized microser
 - AWS RDS
 - PostgreSQL 16
 
-**Characteristics**
-- Managed backups
-- High availability
-- Fully ACID-compliant
 
 ---
 
