@@ -17,17 +17,13 @@ with app.app_context():
     print(">>> Creating tables...")
     db.create_all()
 
-    # ---------------------------------------------------------
     # 1. Create Society
-    # ---------------------------------------------------------
     print(">>> Creating Society...")
     society = Society(name="Green Valley", address="123 Main St, Mumbai")
     db.session.add(society)
     db.session.commit() # ID = 1
 
-    # ---------------------------------------------------------
     # 2. Create Users (20 Residents + 1 Admin + 1 Supplier)
-    # ---------------------------------------------------------
     print(">>> Creating Users...")
     users = []
     base_lat, base_long = 19.0760, 72.8777

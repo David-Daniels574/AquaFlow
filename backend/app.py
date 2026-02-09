@@ -48,7 +48,6 @@ with app.app_context():
     
     # --- FIX FOR RACE CONDITION ---
     try:
-        # Note: In a real production DC system, use Flask-Migrate (Alembic)
         db.create_all()
         print("Tables created successfully (or already existed).")
     except (OperationalError, ProgrammingError, IntegrityError):
