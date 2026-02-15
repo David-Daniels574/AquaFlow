@@ -23,9 +23,6 @@ if not all([jdbc_url, db_user, db_pass]):
 # --- INIT SPARK ---
 spark = SparkSession.builder \
     .appName("WaterConsumptionAnalytics") \
-    .config("spark.jars", jar_path) \
-    .config("spark.driver.extraClassPath", jar_path) \
-    .config("spark.executor.extraClassPath", jar_path) \
     .getOrCreate()
 
 # --- DB PROPERTIES ---
