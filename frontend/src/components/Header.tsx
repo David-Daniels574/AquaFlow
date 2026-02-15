@@ -25,7 +25,6 @@ export function Header() {
   const navItems = [
     { name: "Water Tanker Marketplace", path: "/marketplace" },
     { name: "Consumption Tracking", path: "/consumption" },
-    { name: "Leak Detection", path: "/leak-detection" },
     { name: "Conservation Hub", path: "/conservation" },
     { name: "Society Dashboard", path: "/society" },
   ];
@@ -75,14 +74,19 @@ export function Header() {
           <div className="flex items-center space-x-2">
             {isAuthenticated ? (
               <>
-                <Button variant="outline" size="sm" className="border-white/20 text-zinc-950 hover:bg-white/10">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-white/20 text-zinc-950 hover:bg-white/10"
+                  onClick={() => navigate("/profile")}
+                >
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </Button>
                 <Button 
                   variant="secondary" 
                   size="sm" 
-                  className="bg-white text-zinc-950 hover:bg-white/90"
+                  className="bg-white text-primary hover:bg-white/90"
                   onClick={handleLogout}
                 >
                   Logout

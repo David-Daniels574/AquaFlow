@@ -7,11 +7,11 @@ import { Layout } from "@/components/Layout";
 import CommunityPage from "@/pages/CommunityPage";
 import MarketplacePage from "@/pages/MarketplacePage";
 import ConsumptionPage from "@/pages/ConsumptionPage";
-import LeakDetectionPage from "@/pages/LeakDetectionPage";
 import ConservationHubPage from "@/pages/ConservationHubPage";
 import SocietyDashboardPage from "@/pages/SocietyDashboardPage";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
+import ProfilePage from "@/pages/ProfilePage";
 import { useEffect } from "react";
 import { getAuthToken } from "@/services/api";
 
@@ -73,13 +73,6 @@ const App = () => {
                 </ProtectedRoute>
               </Layout>
             } />
-            <Route path="/leak-detection" element={
-              <Layout>
-                <ProtectedRoute>
-                  <LeakDetectionPage />
-                </ProtectedRoute>
-              </Layout>
-            } />
             <Route path="/conservation" element={
               <Layout>
                 <ProtectedRoute>
@@ -87,20 +80,26 @@ const App = () => {
                 </ProtectedRoute>
               </Layout>
             } />
-            <Route path="/society" element={
-              <Layout>
-                <ProtectedRoute>
-                  <SocietyDashboardPage />
-                </ProtectedRoute>
-              </Layout>
-            } />
-            <Route path="/community" element={
-              <Layout>
-                <ProtectedRoute>
-                  <CommunityPage />
-                </ProtectedRoute>
-              </Layout>
-            } />
+            <Route
+              path="/society"
+              element={
+                <Layout>
+                  <ProtectedRoute>
+                    <SocietyDashboardPage />
+                  </ProtectedRoute>
+                </Layout>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <Layout>
+                  <ProtectedRoute>
+                    <ProfilePage />
+                  </ProtectedRoute>
+                </Layout>
+              }
+            />
           </Routes>
         </BrowserRouter>
       </TooltipProvider>

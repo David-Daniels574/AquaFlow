@@ -22,11 +22,6 @@ export function Sidebar() {
       icon: BarChart3 
     },
     { 
-      name: "Leak Detection", 
-      path: "/leak-detection", 
-      icon: AlertTriangle 
-    },
-    { 
       name: "Conservation Hub", 
       path: "/conservation", 
       icon: Leaf 
