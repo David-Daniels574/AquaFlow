@@ -3,7 +3,7 @@ import random
 from datetime import datetime, timedelta
 import pandas as pd
 from werkzeug.security import generate_password_hash
-from models import UserMeterState, db, User, Supplier, Society, ConservationTip, SupplierOffer, Challenge, UserChallenge, TankerOrder
+from models import UserMeterState, db, User, Supplier, Society, ConservationTip, SupplierOffer, Challenge, UserChallenge, TankerOrder, TankerListing, WaterReading
 from app import app
 import shutil
 
@@ -40,6 +40,19 @@ with app.app_context():
     supplier_user = User(username="water_king", email="orders@waterking.com", role="supplier")
     supplier_user.set_password("supplier123")
     users.append(supplier_user)
+
+    # Tanker Owner User
+    tanker_owner = User(
+        username="owner_raj",
+        email="owner@aquafleet.com",
+        role="tanker_owner",
+        area="Andheri",
+        city="Mumbai",
+        lat=base_lat,
+        long=base_long,
+    )
+    tanker_owner.set_password("owner123")
+    users.append(tanker_owner)
 
     # 20 Residents
     first_names = ["John","Aarav", "Aditya", "Vihaan", "Arjun", "Sai", "Reyansh", "Ayaan", "Krishna", "Ishaan", "Diya", "Saanvi", "Ananya", "Aadhya", "Pari", "Saanvi", "Myra", "Riya", "Aarohi", "Anika"]
@@ -78,6 +91,145 @@ with app.app_context():
     ]
     db.session.add_all(suppliers)
     db.session.commit()
+
+    # ---------------------------------------------------------
+    # 3B. Create Tanker Owner Listings
+    # ---------------------------------------------------------
+    print(">>> Creating Tanker Listings...")
+    owner = User.query.filter_by(username="owner_raj").first()
+    if owner:
+        tankers = [
+            TankerListing(
+                owner_id=owner.id,
+                vehicle_number="MH-01-AB-4455",
+                tanker_type="Standard",
+                capacity=5000.0,
+                price_per_liter=0.45,
+                base_delivery_fee=300.0,
+                service_areas='["Andheri", "Juhu", "Vile Parle"]',
+                images='["https://images.unsplash.com/photo-1572675339312-3e8b094a5440?auto=format&fit=crop&w=900&q=80"]',
+                amenities='["GPS Tracking", "Water Quality Certificate"]',
+                description="Reliable 5KL tanker for same-day deliveries.",
+                emergency_contact="+91-9000011111",
+                status="available",
+                area="Andheri",
+                city="Mumbai",
+                lat=19.115,
+                long=72.846,
+            ),
+            TankerListing(
+                owner_id=owner.id,
+                vehicle_number="MH-01-CD-7788",
+                tanker_type="Premium",
+                capacity=10000.0,
+                price_per_liter=0.60,
+                base_delivery_fee=450.0,
+                service_areas='["Bandra", "Andheri", "Santacruz"]',
+                images='["https://images.unsplash.com/photo-1509395176047-4a66953fd231?auto=format&fit=crop&w=900&q=80"]',
+                amenities='["24x7 Support", "Fast Dispatch"]',
+                description="Premium 10KL tanker for bulk and emergency demand.",
+                emergency_contact="+91-9000022222",
+                status="available",
+                area="Bandra",
+                city="Mumbai",
+                lat=19.061,
+                long=72.834,
+            ),
+
+            # Dummy listings mapped from old Supplier-style coverage
+            TankerListing(
+                owner_id=owner.id,
+                vehicle_number="MH-01-EF-1122",
+                tanker_type="Standard",
+                capacity=6000.0,
+                price_per_liter=0.48,
+                base_delivery_fee=320.0,
+                service_areas='["Mumbai", "Byculla", "Dadar"]',
+                images='["https://cdn.dnaindia.com/sites/default/files/2018/04/16/672411-water-tanker-05.jpg?im=FitAndFill=(300,225)"]',
+                amenities='["Verified Quality", "City Permit"]',
+                description="City coverage tanker for central Mumbai.",
+                emergency_contact="+91-9000033333",
+                status="available",
+                area="Mumbai",
+                city="Mumbai",
+                lat=19.080,
+                long=72.880,
+            ),
+            TankerListing(
+                owner_id=owner.id,
+                vehicle_number="MH-01-GH-3344",
+                tanker_type="Express",
+                capacity=7000.0,
+                price_per_liter=0.52,
+                base_delivery_fee=350.0,
+                service_areas='["Andheri", "Jogeshwari", "Goregaon"]',
+                images='["https://www.hindustantimes.com/ht-img/img/2023/04/04/550x309/Mumbai--India---April-04--2023--A-water-tanker-sup_1680635692044.jpg"]',
+                amenities='["Fast Dispatch", "GPS Tracking"]',
+                description="Fast dispatch tanker for west suburbs.",
+                emergency_contact="+91-9000044444",
+                status="available",
+                area="Andheri",
+                city="Mumbai",
+                lat=19.110,
+                long=72.850,
+            ),
+            TankerListing(
+                owner_id=owner.id,
+                vehicle_number="MH-01-IJ-5566",
+                tanker_type="Standard",
+                capacity=8000.0,
+                price_per_liter=0.50,
+                base_delivery_fee=360.0,
+                service_areas='["Juhu", "Santacruz", "Vile Parle"]',
+                images='["https://www.hindustantimes.com/ht-img/img/2023/05/08/550x309/Due-to-higher-water-demands--the-number-of-water-t_1683567413698.jpg"]',
+                amenities='["Water Quality Certificate"]',
+                description="Balanced cost tanker for Juhu belt.",
+                emergency_contact="+91-9000055555",
+                status="available",
+                area="Juhu",
+                city="Mumbai",
+                lat=19.090,
+                long=72.830,
+            ),
+            TankerListing(
+                owner_id=owner.id,
+                vehicle_number="MH-01-KL-7789",
+                tanker_type="Premium",
+                capacity=9000.0,
+                price_per_liter=0.58,
+                base_delivery_fee=420.0,
+                service_areas='["Bandra", "Khar", "Santacruz"]',
+                images='["https://indianexpress.com/wp-content/uploads/2019/08/strike-feature.jpg"]',
+                amenities='["24x7 Support", "Priority Delivery"]',
+                description="Premium tanker for Bandra and nearby zones.",
+                emergency_contact="+91-9000066666",
+                status="available",
+                area="Bandra",
+                city="Mumbai",
+                lat=19.050,
+                long=72.840,
+            ),
+            TankerListing(
+                owner_id=owner.id,
+                vehicle_number="MH-01-MN-9900",
+                tanker_type="Economy",
+                capacity=5000.0,
+                price_per_liter=0.43,
+                base_delivery_fee=280.0,
+                service_areas='["Vile Parle", "Andheri East", "Kurla"]',
+                images='["https://5.imimg.com/data5/SELLER/Default/2023/4/297592358/HE/CC/UD/24635301/whatsapp-image-2023-04-03-at-10-12-54-am-1000x1000.jpeg"]',
+                amenities='["Affordable Plan"]',
+                description="Economy tanker option for daily needs.",
+                emergency_contact="+91-9000077777",
+                status="available",
+                area="Vile Parle",
+                city="Mumbai",
+                lat=19.100,
+                long=72.860,
+            ),
+        ]
+        db.session.add_all(tankers)
+        db.session.commit()
 
     # Create diverse offers
     offers = []
@@ -171,6 +323,7 @@ with app.app_context():
     for day in range(120, -1, -1):
         target_date = (now - timedelta(days=day)).date()
         daily_records = []
+        db_readings = []
         
         # 3 readings a day per user
         for hour in [7, 14, 21]:
@@ -189,6 +342,13 @@ with app.app_context():
                     "timestamp": datetime.combine(target_date, datetime.min.time()).replace(hour=hour),
                     "reading": current_meter_value[uid]
                 })
+
+                db_readings.append(WaterReading(
+                    user_id=uid,
+                    reading=current_meter_value[uid],
+                    society_id=society_id,
+                    timestamp=datetime.combine(target_date, datetime.min.time()).replace(hour=hour)
+                ))
         
         # Write to Parquet Partition
         df = pd.DataFrame(daily_records)
@@ -200,6 +360,9 @@ with app.app_context():
             engine='pyarrow', 
             use_deprecated_int96_timestamps=True
         )
+
+        # Keep legacy consumption endpoints working by storing readings in DB too.
+        db.session.add_all(db_readings)
 
     # ---------------------------------------------------------
     # Initialize State Table for Spark

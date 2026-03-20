@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useLogin } from "@/hooks/useAPI";
+import { getCurrentUserRole } from "@/services/api";
 
 export function LoginForm() {
   const [identifier, setIdentifier] = useState("");
@@ -28,11 +29,20 @@ export function LoginForm() {
 
     try {
       await loginMutation.mutateAsync({ identifier, password });
+      const role = getCurrentUserRole();
+
       toast({
         title: "Success",
         description: "You have successfully logged in",
       });
-      navigate("/marketplace");
+
+      if (["tanker_owner", "supplier"].includes(role || "")) {
+        navigate("/owner-dashboard");
+      } else if (role === "society_admin") {
+        navigate("/society");
+      } else {
+        navigate("/marketplace");
+      }
     } catch (error) {
       toast({
         title: "Error",

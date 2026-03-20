@@ -12,7 +12,7 @@ export function RegisterForm() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("user");
+  const [role, setRole] = useState("customer");
   const { toast } = useToast();
   const navigate = useNavigate();
   const registerMutation = useRegister();
@@ -101,8 +101,8 @@ export function RegisterForm() {
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="user">User</SelectItem>
-                <SelectItem value="supplier">Supplier</SelectItem>
+                <SelectItem value="customer">Customer</SelectItem>
+                <SelectItem value="tanker_owner">Tanker Owner</SelectItem>
                 <SelectItem value="society_admin">Society Admin</SelectItem>
               </SelectContent>
             </Select>

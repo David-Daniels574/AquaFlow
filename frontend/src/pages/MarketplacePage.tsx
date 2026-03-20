@@ -5,7 +5,7 @@ import Checkout from "@/components/marketplace/Checkout";
 import { motion, AnimatePresence } from "framer-motion";
 import { createContext, useState, useEffect } from "react";
 import { Supplier } from "@/services/api";
-import { useSuppliers } from "@/hooks/useAPI";
+import { useMarketplaceTankers } from "@/hooks/useAPI";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 // Create filter context
@@ -61,8 +61,8 @@ export default function MarketplacePage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [bookingId, setBookingId] = useState<string>("");
   
-  // Get all suppliers from API
-  const { data: allSuppliers, isLoading } = useSuppliers();
+  // Get all tanker listings from API
+  const { data: allSuppliers, isLoading, error } = useMarketplaceTankers();
 
   // Filter and sort suppliers based on current filters
   useEffect(() => {
@@ -187,6 +187,9 @@ export default function MarketplacePage() {
           >
             <TankerMap />
             <TankerGrid
+              allSuppliers={allSuppliers || []}
+              isLoading={isLoading}
+              error={error}
               onBookNow={(supplier) => {
                 setSelectedSupplier(supplier);
                 // Generate a temporary booking ID

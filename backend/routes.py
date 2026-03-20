@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
-from models import UserDailyUsage, db, User, Supplier, TankerOrder, WaterReading, ConservationTip, Society, SupplierOffer, Challenge, UserChallenge, Broadcast, DiscussionThread, ThreadComment
+from models import UserDailyUsage, db, User, Supplier, TankerOrder, WaterReading, ConservationTip, Society, SupplierOffer, Challenge, UserChallenge, Broadcast, DiscussionThread, ThreadComment, TankerListing, TankerBooking
 from auth import register_user, login_user
 from utils import get_consumption_reports, calculate_eta, get_road_metrics
 from datetime import datetime, timedelta
@@ -8,6 +8,7 @@ from collections import defaultdict
 import stripe 
 from dotenv import load_dotenv
 import os
+import json
 from sqlalchemy import func, distinct , extract
 from app import cache,db
 
@@ -16,6 +17,66 @@ load_dotenv()
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
 
 api = Blueprint('api', __name__)
+
+
+def _is_owner_role(role):
+    return role in ['tanker_owner', 'supplier']
+
+
+def _serialize_tanker(tanker, include_private=False):
+    try:
+        service_areas = json.loads(tanker.service_areas) if tanker.service_areas else []
+    except Exception:
+        service_areas = []
+
+    try:
+        images = json.loads(tanker.images) if tanker.images else []
+    except Exception:
+        images = []
+
+    try:
+        amenities = json.loads(tanker.amenities) if tanker.amenities else []
+    except Exception:
+        amenities = []
+
+    payload = {
+        'id': tanker.id,
+        'owner_id': tanker.owner_id,
+        'name': f"{tanker.tanker_type} Tanker",
+        'vehicle_number': tanker.vehicle_number,
+        'capacity': tanker.capacity,
+        'type': tanker.tanker_type,
+        'price_per_liter': tanker.price_per_liter,
+        'base_delivery_fee': tanker.base_delivery_fee,
+        'service_areas': service_areas,
+        'photo_url': images[0] if images else None,
+        'images': images,
+        'amenities': amenities,
+        'description': tanker.description,
+        'emergency_contact': tanker.emergency_contact,
+        'status': tanker.status,
+        'is_available': tanker.status == 'available',
+        'rating': tanker.rating,
+        'num_reviews': tanker.total_reviews,
+        'total_deliveries': tanker.total_deliveries,
+        'area': tanker.area,
+        'city': tanker.city,
+        'lat': tanker.lat,
+        'long': tanker.long,
+        'offers': [{
+            'quantity': tanker.capacity,
+            'cost': round((tanker.capacity * tanker.price_per_liter) + tanker.base_delivery_fee, 2)
+        }],
+        'starting_from': round((tanker.capacity * tanker.price_per_liter) + tanker.base_delivery_fee, 2),
+        'estimated_eta': 45,
+        'created_at': tanker.created_at.isoformat() if tanker.created_at else None,
+        'updated_at': tanker.updated_at.isoformat() if tanker.updated_at else None,
+    }
+
+    if include_private:
+        payload['owner_contact'] = tanker.emergency_contact
+
+    return payload
 
 @api.route('/', methods=['GET'])
 def home():
@@ -324,38 +385,51 @@ def log_reading():
 def consumption_report():
     user_id = int(get_jwt_identity())
     period = request.args.get('period', 'daily') # 'daily', 'weekly', 'monthly'
-    
-    now = datetime.utcnow().date()
-    
-    if period == 'weekly':
-        start_date = now - timedelta(days=7)
-    elif period == 'monthly':
-        start_date = now - timedelta(days=30)
-    else: # daily
-        start_date = now - timedelta(days=1)
 
-    # 1. Fetch from the pre-aggregated table!
-    readings = UserDailyUsage.query.filter(
-        UserDailyUsage.user_id == user_id,
-        UserDailyUsage.date >= start_date
-    ).order_by(UserDailyUsage.date).all()
+    now = datetime.utcnow()
+
+    if period == 'weekly':
+        start_dt = now - timedelta(days=7)
+    elif period == 'monthly':
+        start_dt = now - timedelta(days=30)
+    else: # daily
+        start_dt = now - timedelta(days=1)
+
+    readings = WaterReading.query.filter(
+        WaterReading.user_id == user_id,
+        WaterReading.timestamp >= start_dt
+    ).order_by(WaterReading.timestamp).all()
 
     if not readings:
-        return jsonify({"message": "No data found for this period", "total_usage": 0}), 200
+        return jsonify({
+            "period": period,
+            "total_usage_liters": 0,
+            "daily_breakdown": []
+        }), 200
 
-    # 2. Calculate Total
-    total_usage = sum(r.total_usage_liters for r in readings)
+    # Aggregate cumulative meter readings into per-day usage.
+    day_bounds = {}
+    for r in readings:
+        day_key = r.timestamp.date().isoformat()
+        if day_key not in day_bounds:
+            day_bounds[day_key] = {"first": r.reading, "last": r.reading}
+        else:
+            day_bounds[day_key]["last"] = r.reading
 
-    # 3. Format Response
+    daily_breakdown = []
+    total_usage = 0.0
+    for day in sorted(day_bounds.keys()):
+        usage = max(day_bounds[day]["last"] - day_bounds[day]["first"], 0.0)
+        usage = round(usage, 2)
+        total_usage += usage
+        daily_breakdown.append({"date": day, "usage": usage})
+
     report = {
         "period": period,
         "total_usage_liters": round(total_usage, 2),
-        "daily_breakdown": [
-            {"date": r.date.isoformat(), "usage": round(r.total_usage_liters, 2)}
-            for r in readings
-        ]
+        "daily_breakdown": daily_breakdown,
     }
-    
+
     return jsonify(report), 200
 
 
@@ -367,6 +441,379 @@ def conservation_tips():
     location = request.args.get('location', 'urban_india')
     tips = ConservationTip.query.filter_by(location_specific=location).all()
     return jsonify([{'title': t.title, 'content': t.content} for t in tips]), 200
+
+
+@api.route('/tankers', methods=['POST'])
+@jwt_required()
+def create_tanker_listing():
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+
+    if not user or not _is_owner_role(user.role):
+        return jsonify({'error': 'Only tanker owners can create listings'}), 403
+
+    data = request.json or {}
+    required_fields = ['vehicle_number', 'capacity', 'price_per_liter']
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        return jsonify({'error': f'Missing fields: {", ".join(missing_fields)}'}), 400
+
+    if TankerListing.query.filter_by(vehicle_number=data['vehicle_number']).first():
+        return jsonify({'error': 'Vehicle number already exists'}), 400
+
+    try:
+        tanker = TankerListing(
+            owner_id=user_id,
+            vehicle_number=data['vehicle_number'],
+            tanker_type=data.get('type', 'Standard'),
+            capacity=float(data['capacity']),
+            price_per_liter=float(data['price_per_liter']),
+            base_delivery_fee=float(data.get('base_delivery_fee', 0.0)),
+            service_areas=json.dumps(data.get('service_areas', [])),
+            images=json.dumps(data.get('images', [])),
+            amenities=json.dumps(data.get('amenities', [])),
+            description=data.get('description'),
+            emergency_contact=data.get('emergency_contact'),
+            status=data.get('status', 'available'),
+            area=data.get('area', user.area),
+            city=data.get('city', user.city),
+            lat=float(data['lat']) if data.get('lat') is not None else user.lat,
+            long=float(data['long']) if data.get('long') is not None else user.long,
+        )
+        db.session.add(tanker)
+        db.session.commit()
+        return jsonify({'message': 'Tanker listing created', 'tanker': _serialize_tanker(tanker, include_private=True)}), 201
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return jsonify({'error': 'Invalid numeric value provided'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/tankers', methods=['GET'])
+@jwt_required()
+def get_tanker_listings():
+    tankers = TankerListing.query.all()
+    return jsonify([_serialize_tanker(t) for t in tankers]), 200
+
+
+@api.route('/tankers/owner', methods=['GET'])
+@jwt_required()
+def get_owner_tankers():
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+
+    if not user or not _is_owner_role(user.role):
+        return jsonify({'error': 'Only tanker owners can access this resource'}), 403
+
+    tankers = TankerListing.query.filter_by(owner_id=user_id).order_by(TankerListing.created_at.desc()).all()
+    return jsonify([_serialize_tanker(t, include_private=True) for t in tankers]), 200
+
+
+@api.route('/tankers/<int:tanker_id>', methods=['PUT'])
+@jwt_required()
+def update_tanker_listing(tanker_id):
+    user_id = int(get_jwt_identity())
+    tanker = TankerListing.query.get(tanker_id)
+
+    if not tanker:
+        return jsonify({'error': 'Tanker not found'}), 404
+    if tanker.owner_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.json or {}
+    try:
+        if 'vehicle_number' in data:
+            existing = TankerListing.query.filter_by(vehicle_number=data['vehicle_number']).first()
+            if existing and existing.id != tanker_id:
+                return jsonify({'error': 'Vehicle number already exists'}), 400
+            tanker.vehicle_number = data['vehicle_number']
+        if 'capacity' in data:
+            tanker.capacity = float(data['capacity'])
+        if 'price_per_liter' in data:
+            tanker.price_per_liter = float(data['price_per_liter'])
+        if 'base_delivery_fee' in data:
+            tanker.base_delivery_fee = float(data['base_delivery_fee'])
+        if 'type' in data:
+            tanker.tanker_type = data['type']
+        if 'service_areas' in data:
+            tanker.service_areas = json.dumps(data['service_areas'])
+        if 'images' in data:
+            tanker.images = json.dumps(data['images'])
+        if 'amenities' in data:
+            tanker.amenities = json.dumps(data['amenities'])
+        if 'description' in data:
+            tanker.description = data['description']
+        if 'emergency_contact' in data:
+            tanker.emergency_contact = data['emergency_contact']
+        if 'status' in data:
+            tanker.status = data['status']
+        if 'area' in data:
+            tanker.area = data['area']
+        if 'city' in data:
+            tanker.city = data['city']
+        if 'lat' in data:
+            tanker.lat = float(data['lat']) if data['lat'] is not None else None
+        if 'long' in data:
+            tanker.long = float(data['long']) if data['long'] is not None else None
+
+        db.session.commit()
+        return jsonify({'message': 'Tanker updated', 'tanker': _serialize_tanker(tanker, include_private=True)}), 200
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return jsonify({'error': 'Invalid numeric value provided'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/tankers/<int:tanker_id>', methods=['DELETE'])
+@jwt_required()
+def delete_tanker_listing(tanker_id):
+    user_id = int(get_jwt_identity())
+    tanker = TankerListing.query.get(tanker_id)
+
+    if not tanker:
+        return jsonify({'error': 'Tanker not found'}), 404
+    if tanker.owner_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    try:
+        db.session.delete(tanker)
+        db.session.commit()
+        return jsonify({'message': 'Tanker deleted'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/tankers/<int:tanker_id>/status', methods=['PATCH'])
+@jwt_required()
+def update_tanker_status(tanker_id):
+    user_id = int(get_jwt_identity())
+    tanker = TankerListing.query.get(tanker_id)
+
+    if not tanker:
+        return jsonify({'error': 'Tanker not found'}), 404
+    if tanker.owner_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.json or {}
+    status = data.get('status')
+    if status not in ['available', 'booked', 'maintenance']:
+        return jsonify({'error': 'Invalid status'}), 400
+
+    try:
+        tanker.status = status
+        db.session.commit()
+        return jsonify({'message': 'Status updated', 'tanker': _serialize_tanker(tanker, include_private=True)}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/bookings', methods=['POST'])
+@jwt_required()
+def create_booking():
+    user_id = int(get_jwt_identity())
+    data = request.json or {}
+    required_fields = ['tanker_id', 'quantity', 'total_amount']
+    missing_fields = [field for field in required_fields if field not in data]
+    if missing_fields:
+        return jsonify({'error': f'Missing fields: {", ".join(missing_fields)}'}), 400
+
+    tanker = TankerListing.query.get(int(data['tanker_id']))
+    if not tanker:
+        return jsonify({'error': 'Tanker not found'}), 404
+    if tanker.status != 'available':
+        return jsonify({'error': 'Tanker is not available'}), 400
+
+    try:
+        booking = TankerBooking(
+            tanker_id=tanker.id,
+            customer_id=user_id,
+            delivery_address=data.get('delivery_address', 'Address to be shared on confirmation'),
+            delivery_pincode=data.get('delivery_pincode'),
+            quantity=float(data['quantity']),
+            total_amount=float(data['total_amount']),
+            status='pending',
+            scheduled_time=datetime.fromisoformat(data['scheduled_time']) if data.get('scheduled_time') else None,
+        )
+        tanker.status = 'booked'
+        db.session.add(booking)
+        db.session.commit()
+        return jsonify({'message': 'Booking created', 'booking_id': booking.id}), 201
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return jsonify({'error': 'Invalid numeric or datetime value'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/bookings/owner', methods=['GET'])
+@jwt_required()
+def get_owner_bookings():
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+
+    if not user or not _is_owner_role(user.role):
+        return jsonify({'error': 'Only tanker owners can access this resource'}), 403
+
+    bookings = TankerBooking.query.join(TankerListing, TankerBooking.tanker_id == TankerListing.id)\
+        .filter(TankerListing.owner_id == user_id)\
+        .order_by(TankerBooking.created_at.desc()).all()
+
+    result = []
+    for b in bookings:
+        customer = User.query.get(b.customer_id)
+        tanker = TankerListing.query.get(b.tanker_id)
+        result.append({
+            'id': b.id,
+            'tanker_id': b.tanker_id,
+            'tanker_vehicle_number': tanker.vehicle_number if tanker else None,
+            'customer': {
+                'id': customer.id if customer else None,
+                'username': customer.username if customer else 'Unknown',
+                'email': customer.email if customer else None,
+            },
+            'delivery_address': b.delivery_address,
+            'delivery_pincode': b.delivery_pincode,
+            'quantity': b.quantity,
+            'total_amount': b.total_amount,
+            'status': b.status,
+            'scheduled_time': b.scheduled_time.isoformat() if b.scheduled_time else None,
+            'delivered_time': b.delivered_time.isoformat() if b.delivered_time else None,
+            'created_at': b.created_at.isoformat() if b.created_at else None,
+        })
+    return jsonify(result), 200
+
+
+@api.route('/bookings/<int:booking_id>/status', methods=['PATCH'])
+@jwt_required()
+def update_booking_status(booking_id):
+    user_id = int(get_jwt_identity())
+    booking = TankerBooking.query.get(booking_id)
+
+    if not booking:
+        return jsonify({'error': 'Booking not found'}), 404
+
+    tanker = TankerListing.query.get(booking.tanker_id)
+    if not tanker or tanker.owner_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    data = request.json or {}
+    status = data.get('status')
+    if status not in ['pending', 'confirmed', 'in_transit', 'completed', 'cancelled']:
+        return jsonify({'error': 'Invalid status'}), 400
+
+    try:
+        booking.status = status
+        if status in ['cancelled', 'completed'] and tanker.status == 'booked':
+            tanker.status = 'available'
+        if status == 'completed':
+            booking.delivered_time = datetime.utcnow()
+            tanker.total_deliveries = (tanker.total_deliveries or 0) + 1
+        db.session.commit()
+        return jsonify({'message': 'Booking status updated'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@api.route('/owner/dashboard', methods=['GET'])
+@jwt_required()
+def owner_dashboard():
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    if not user or not _is_owner_role(user.role):
+        return jsonify({'error': 'Only tanker owners can access this resource'}), 403
+
+    tankers = TankerListing.query.filter_by(owner_id=user_id).all()
+    tanker_ids = [t.id for t in tankers]
+    bookings = TankerBooking.query.filter(TankerBooking.tanker_id.in_(tanker_ids)).all() if tanker_ids else []
+
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+
+    active_bookings = sum(1 for b in bookings if b.status in ['pending', 'confirmed', 'in_transit'])
+    avg_rating = round(sum((t.rating or 0) for t in tankers) / len(tankers), 2) if tankers else 0.0
+    month_earnings = sum(
+        b.total_amount for b in bookings
+        if b.status == 'completed' and b.delivered_time and b.delivered_time >= month_start
+    )
+    pending_bookings = sum(1 for b in bookings if b.status == 'pending')
+
+    recent = sorted(bookings, key=lambda b: b.created_at or datetime.min, reverse=True)[:6]
+    activity = [{
+        'booking_id': b.id,
+        'tanker_id': b.tanker_id,
+        'status': b.status,
+        'total_amount': b.total_amount,
+        'quantity': b.quantity,
+        'created_at': b.created_at.isoformat() if b.created_at else None,
+    } for b in recent]
+
+    return jsonify({
+        'total_tankers': len(tankers),
+        'active_bookings': active_bookings,
+        'this_month_earnings': round(month_earnings, 2),
+        'average_rating': avg_rating,
+        'pending_bookings': pending_bookings,
+        'recent_activity': activity,
+    }), 200
+
+
+@api.route('/owner/earnings', methods=['GET'])
+@jwt_required()
+def owner_earnings():
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    if not user or not _is_owner_role(user.role):
+        return jsonify({'error': 'Only tanker owners can access this resource'}), 403
+
+    tankers = TankerListing.query.filter_by(owner_id=user_id).all()
+    tanker_ids = [t.id for t in tankers]
+    if not tanker_ids:
+        return jsonify({'total_earnings': 0, 'completed_orders': 0, 'monthly': [], 'by_tanker': []}), 200
+
+    completed = TankerBooking.query.filter(
+        TankerBooking.tanker_id.in_(tanker_ids),
+        TankerBooking.status == 'completed'
+    ).all()
+
+    total_earnings = round(sum(b.total_amount for b in completed), 2)
+    completed_orders = len(completed)
+
+    monthly = defaultdict(float)
+    for b in completed:
+        dt = b.delivered_time or b.created_at
+        key = dt.strftime('%Y-%m') if dt else 'unknown'
+        monthly[key] += b.total_amount
+
+    by_tanker = defaultdict(float)
+    for b in completed:
+        by_tanker[b.tanker_id] += b.total_amount
+
+    tanker_map = {t.id: t for t in tankers}
+
+    return jsonify({
+        'total_earnings': total_earnings,
+        'completed_orders': completed_orders,
+        'monthly': [
+            {'month': month, 'amount': round(amount, 2)}
+            for month, amount in sorted(monthly.items())
+        ],
+        'by_tanker': [
+            {
+                'tanker_id': tanker_id,
+                'vehicle_number': tanker_map[tanker_id].vehicle_number if tanker_id in tanker_map else 'Unknown',
+                'amount': round(amount, 2)
+            }
+            for tanker_id, amount in by_tanker.items()
+        ]
+    }), 200
 
 @api.route('/challenges', methods=['GET'])
 @jwt_required()

@@ -2,15 +2,28 @@
 from flask_jwt_extended import create_access_token
 from models import User, db
 
+
+def normalize_role(role: str) -> str:
+    role_map = {
+        'customer': 'user',
+        'user': 'user',
+        'tanker_owner': 'tanker_owner',
+        'supplier': 'supplier',
+        'admin': 'society_admin',
+        'society_admin': 'society_admin',
+    }
+    return role_map.get((role or '').strip().lower(), 'user')
+
 def register_user(username, email, password, role='user', society_id=None, area=None, city=None, lat=None, long=None):
     """
     Register a new user with validation.
     """
     if not all([username, email, password]):
         return None, 'Missing required fields'
+    normalized_role = normalize_role(role)
     if User.query.filter_by(username=username).first() or User.query.filter_by(email=email).first():
         return None, 'User already exists'
-    user = User(username=username, email=email, role=role, society_id=society_id, area=area, city=city, lat=lat, long=long)
+    user = User(username=username, email=email, role=normalized_role, society_id=society_id, area=area, city=city, lat=lat, long=long)
     user.set_password(password)
     try:
         db.session.add(user)

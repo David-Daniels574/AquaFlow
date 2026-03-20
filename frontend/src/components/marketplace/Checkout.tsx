@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, XCircle, Droplet } from "lucide-react";
 import { Supplier } from "@/services/api";
-import { useBookTanker } from "@/hooks/useAPI";
+import { useCreateMarketplaceBooking } from "@/hooks/useAPI";
 import { useToast } from "@/components/ui/use-toast";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -21,7 +21,7 @@ interface Props {
 export default function Checkout({ bookingId, supplier, onSuccess, onCancel }: Props) {
   const stripe = useStripe();
   const elements = useElements();
-  const bookTankerMutation = useBookTanker();
+  const createBookingMutation = useCreateMarketplaceBooking();
   const { toast } = useToast();
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,15 +71,16 @@ export default function Checkout({ bookingId, supplier, onSuccess, onCancel }: P
         // Step 3: Create booking after successful payment
         try {
           console.log("Booking details:", {
-            supplier_id: supplier.id,
-            volume: selectedOffer.quantity,
-            price: selectedOffer.cost
+            tanker_id: supplier.id,
+            quantity: selectedOffer.quantity,
+            total_amount: selectedOffer.cost
           });
 
-          await bookTankerMutation.mutateAsync({
-            supplier_id: supplier.id,
-            volume: selectedOffer.quantity,
-            price: selectedOffer.cost
+          await createBookingMutation.mutateAsync({
+            tanker_id: supplier.id,
+            quantity: selectedOffer.quantity,
+            total_amount: selectedOffer.cost,
+            delivery_address: "Address to be shared after booking",
           });
 
           console.log("Step 4: Booking successful!");

@@ -5,11 +5,17 @@ import {
   AlertTriangle, 
   Leaf, 
   Building2,
-  Home
+  Home,
+  Package,
+  ClipboardList,
+  Wallet,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { getCurrentUserRole } from "@/services/api";
 
 export function Sidebar() {
+  const role = getCurrentUserRole();
+
   const navItems = [
     { 
       name: "Water Tanker Marketplace", 
@@ -31,6 +37,12 @@ export function Sidebar() {
       path: "/society", 
       icon: Building2 
     },
+    ...(role === "tanker_owner" || role === "supplier" ? [
+      { name: "Owner Dashboard", path: "/owner-dashboard", icon: Home, end: true },
+      { name: "My Tankers", path: "/owner-dashboard/tankers", icon: Package },
+      { name: "Bookings", path: "/owner-dashboard/bookings", icon: ClipboardList },
+      { name: "Earnings", path: "/owner-dashboard/earnings", icon: Wallet },
+    ] : []),
   ];
 
   return (
@@ -45,6 +57,7 @@ export function Sidebar() {
             <NavLink
               key={item.path}
               to={item.path}
+              end={!!item.end}
               className={({ isActive }) =>
                 `flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isActive

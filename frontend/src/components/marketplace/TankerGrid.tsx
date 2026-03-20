@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Star, MapPin, Clock } from "lucide-react";
 import { motion } from "framer-motion";
-import { useSuppliers } from "@/hooks/useAPI";
 import { useContext } from "react";
 import { FilterContext } from "@/pages/MarketplacePage";
 import tankerImg from "./s-1.png"; 
@@ -17,11 +16,13 @@ import { Supplier } from "@/services/api";
 // Map supplier IDs to images for fallback
 const supplierImages = [tankerImg, tankerIms, tankerImt, tankerImu, tankerImv, tankerImz];
 interface TankerGridProps {
+  allSuppliers: Supplier[];
+  isLoading: boolean;
+  error: unknown;
   onBookNow: (supplier: Supplier) => void;
 }
 
-export function TankerGrid({ onBookNow }: TankerGridProps) {
-  const { data: allSuppliers, isLoading, error } = useSuppliers();
+export function TankerGrid({ allSuppliers, isLoading, error, onBookNow }: TankerGridProps) {
   const { filteredSuppliers } = useContext(FilterContext);
   
   // Use filtered suppliers if they exist, otherwise use all suppliers
@@ -69,7 +70,13 @@ export function TankerGrid({ onBookNow }: TankerGridProps) {
                 />
                 <Badge 
                   variant="secondary" 
-                  className="absolute top-2 left-2 bg-status-success text-white"
+                  className={`absolute top-2 left-2 text-white ${supplier.is_available ? "bg-status-success" : "bg-red-500"}`}
+                >
+                  {supplier.is_available ? "Available" : "Not Available"}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="absolute top-2 right-2 bg-white"
                 >
                   {supplier.offers?.[0]?.quantity ? `${supplier.offers[0].quantity}L` : '500L'}
                 </Badge>
@@ -111,9 +118,10 @@ export function TankerGrid({ onBookNow }: TankerGridProps) {
                 
                 <Button 
                   className="w-full bg-primary hover:bg-primary-hover"
+                  disabled={!supplier.is_available}
                   onClick={() => onBookNow(supplier)}
                 >
-                  Book Now
+                  {supplier.is_available ? "Book Now" : "Unavailable"}
                 </Button>
               </CardContent>
             </Card>

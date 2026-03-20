@@ -17,6 +17,59 @@ export interface Supplier {
   offers: Array<{ quantity: number; cost: number }>;
   starting_from?: number;
   estimated_eta?: number;
+  vehicle_number?: string;
+  capacity?: number;
+  type?: string;
+  status?: "available" | "booked" | "maintenance";
+  is_available?: boolean;
+  price_per_liter?: number;
+  base_delivery_fee?: number;
+  service_areas?: string[];
+  amenities?: string[];
+  description?: string;
+  owner_id?: number;
+}
+
+export interface OwnerDashboard {
+  total_tankers: number;
+  active_bookings: number;
+  this_month_earnings: number;
+  average_rating: number;
+  pending_bookings: number;
+  recent_activity: Array<{
+    booking_id: number;
+    tanker_id: number;
+    status: string;
+    total_amount: number;
+    quantity: number;
+    created_at: string;
+  }>;
+}
+
+export interface OwnerBooking {
+  id: number;
+  tanker_id: number;
+  tanker_vehicle_number: string;
+  customer: {
+    id: number;
+    username: string;
+    email: string;
+  };
+  delivery_address: string;
+  delivery_pincode?: string;
+  quantity: number;
+  total_amount: number;
+  status: "pending" | "confirmed" | "in_transit" | "completed" | "cancelled";
+  scheduled_time?: string;
+  delivered_time?: string;
+  created_at: string;
+}
+
+export interface OwnerEarnings {
+  total_earnings: number;
+  completed_orders: number;
+  monthly: Array<{ month: string; amount: number }>;
+  by_tanker: Array<{ tanker_id: number; vehicle_number: string; amount: number }>;
 }
 
 export interface LeakEvent {
@@ -109,6 +162,31 @@ export const getAuthToken = (): string | null => {
     authToken = localStorage.getItem('authToken');
   }
   return authToken;
+};
+
+export const getAuthClaims = (): { role?: string; sub?: string } | null => {
+  const token = getAuthToken();
+  if (!token) return null;
+
+  try {
+    const payload = token.split('.')[1];
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+    const decoded = JSON.parse(atob(padded));
+    return decoded;
+  } catch {
+    return null;
+  }
+};
+
+export const getCurrentUserRole = (): string | null => {
+  const claims = getAuthClaims();
+  const role = claims?.role;
+  if (!role) return null;
+
+  if (role === 'customer') return 'user';
+  if (role === 'admin') return 'society_admin';
+  return role;
 };
 
 export const clearAuthToken = () => {
@@ -318,6 +396,111 @@ export const societyAPI = {
     return apiRequest<{ message: string; order_id: number }>('/society_bulk_order', {
       method: 'POST',
       body: JSON.stringify(orderData),
+    });
+  },
+};
+
+export const tankerMarketplaceAPI = {
+  getTankers: async (): Promise<Supplier[]> => {
+    return apiRequest<Supplier[]>('/tankers');
+  },
+
+  createBooking: async (bookingData: {
+    tanker_id: number;
+    quantity: number;
+    total_amount: number;
+    delivery_address?: string;
+    delivery_pincode?: string;
+    scheduled_time?: string;
+  }) => {
+    return apiRequest<{ message: string; booking_id: number }>('/bookings', {
+      method: 'POST',
+      body: JSON.stringify(bookingData),
+    });
+  },
+};
+
+export const tankerOwnerAPI = {
+  getDashboard: async (): Promise<OwnerDashboard> => {
+    return apiRequest<OwnerDashboard>('/owner/dashboard');
+  },
+
+  getEarnings: async (): Promise<OwnerEarnings> => {
+    return apiRequest<OwnerEarnings>('/owner/earnings');
+  },
+
+  getTankers: async (): Promise<Supplier[]> => {
+    return apiRequest<Supplier[]>('/tankers/owner');
+  },
+
+  createTanker: async (tankerData: {
+    vehicle_number: string;
+    capacity: number;
+    type: string;
+    price_per_liter: number;
+    base_delivery_fee: number;
+    service_areas: string[];
+    images: string[];
+    amenities: string[];
+    description?: string;
+    emergency_contact?: string;
+    area?: string;
+    city?: string;
+  }) => {
+    return apiRequest<{ message: string; tanker: Supplier }>('/tankers', {
+      method: 'POST',
+      body: JSON.stringify(tankerData),
+    });
+  },
+
+  updateTanker: async (
+    tankerId: number,
+    tankerData: Partial<{
+      vehicle_number: string;
+      capacity: number;
+      type: string;
+      price_per_liter: number;
+      base_delivery_fee: number;
+      service_areas: string[];
+      images: string[];
+      amenities: string[];
+      description?: string;
+      emergency_contact?: string;
+      area?: string;
+      city?: string;
+      status: "available" | "booked" | "maintenance";
+    }>
+  ) => {
+    return apiRequest<{ message: string; tanker: Supplier }>(`/tankers/${tankerId}`, {
+      method: 'PUT',
+      body: JSON.stringify(tankerData),
+    });
+  },
+
+  deleteTanker: async (tankerId: number) => {
+    return apiRequest<{ message: string }>(`/tankers/${tankerId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  updateTankerStatus: async (tankerId: number, status: "available" | "booked" | "maintenance") => {
+    return apiRequest<{ message: string; tanker: Supplier }>(`/tankers/${tankerId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
+
+  getBookings: async (): Promise<OwnerBooking[]> => {
+    return apiRequest<OwnerBooking[]>('/bookings/owner');
+  },
+
+  updateBookingStatus: async (
+    bookingId: number,
+    status: "pending" | "confirmed" | "in_transit" | "completed" | "cancelled"
+  ) => {
+    return apiRequest<{ message: string }>(`/bookings/${bookingId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
     });
   },
 };

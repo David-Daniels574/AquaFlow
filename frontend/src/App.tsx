@@ -12,17 +12,28 @@ import SocietyDashboardPage from "@/pages/SocietyDashboardPage";
 import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import ProfilePage from "@/pages/ProfilePage";
+import OwnerDashboardPage from "@/pages/OwnerDashboardPage";
+import OwnerTankersPage from "@/pages/OwnerTankersPage";
+import OwnerBookingsPage from "@/pages/OwnerBookingsPage";
+import OwnerEarningsPage from "@/pages/OwnerEarningsPage";
 import { useEffect } from "react";
-import { getAuthToken } from "@/services/api";
+import { getAuthToken, getCurrentUserRole } from "@/services/api";
 
 const queryClient = new QueryClient();
 
 // Protected route component
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode; allowedRoles?: string[] }) => {
   const token = getAuthToken();
+  const role = getCurrentUserRole();
+
   if (!token) {
     return <Navigate to="/login" replace />;
   }
+
+  if (allowedRoles?.length && (!role || !allowedRoles.includes(role))) {
+    return <Navigate to="/marketplace" replace />;
+  }
+
   return <>{children}</>;
 };
 
@@ -96,6 +107,46 @@ const App = () => {
                 <Layout>
                   <ProtectedRoute>
                     <ProfilePage />
+                  </ProtectedRoute>
+                </Layout>
+              }
+            />
+            <Route
+              path="/owner-dashboard"
+              element={
+                <Layout>
+                  <ProtectedRoute allowedRoles={["tanker_owner", "supplier"]}>
+                    <OwnerDashboardPage />
+                  </ProtectedRoute>
+                </Layout>
+              }
+            />
+            <Route
+              path="/owner-dashboard/tankers"
+              element={
+                <Layout>
+                  <ProtectedRoute allowedRoles={["tanker_owner", "supplier"]}>
+                    <OwnerTankersPage />
+                  </ProtectedRoute>
+                </Layout>
+              }
+            />
+            <Route
+              path="/owner-dashboard/bookings"
+              element={
+                <Layout>
+                  <ProtectedRoute allowedRoles={["tanker_owner", "supplier"]}>
+                    <OwnerBookingsPage />
+                  </ProtectedRoute>
+                </Layout>
+              }
+            />
+            <Route
+              path="/owner-dashboard/earnings"
+              element={
+                <Layout>
+                  <ProtectedRoute allowedRoles={["tanker_owner", "supplier"]}>
+                    <OwnerEarningsPage />
                   </ProtectedRoute>
                 </Layout>
               }

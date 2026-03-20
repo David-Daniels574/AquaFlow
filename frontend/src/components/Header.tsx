@@ -3,17 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Droplet, User } from "lucide-react";
 import { motion } from "framer-motion";
-import { getAuthToken, clearAuthToken } from "@/services/api";
+import { getAuthToken, clearAuthToken, getCurrentUserRole } from "@/services/api";
 import { useState, useEffect } from "react";
 
 export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
     const token = getAuthToken();
     setIsAuthenticated(!!token);
+    setRole(getCurrentUserRole());
   }, [location]);
 
   const handleLogout = () => {

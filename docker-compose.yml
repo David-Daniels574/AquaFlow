@@ -24,6 +24,7 @@ services:
       - FLASK_ENV=development
       - REDIS_URL=redis://redis:6379/0  
     volumes:
+      - ./backend:/app
       - ./data:/app/data
     
     depends_on:

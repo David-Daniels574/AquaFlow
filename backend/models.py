@@ -75,6 +75,68 @@ class SupplierOffer(db.Model):
     def __repr__(self):
         return f'<SupplierOffer {self.id}>'
 
+
+class TankerListing(db.Model):
+    """
+    Tanker listing created by tanker owners for marketplace visibility.
+    """
+    __tablename__ = 'tanker_listing'
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    vehicle_number = db.Column(db.String(32), unique=True, nullable=False)
+    tanker_type = db.Column(db.String(50), default='Standard')
+    capacity = db.Column(db.Float, nullable=False)
+    price_per_liter = db.Column(db.Float, nullable=False)
+    base_delivery_fee = db.Column(db.Float, default=0.0)
+    service_areas = db.Column(db.Text, default='[]')
+    images = db.Column(db.Text, default='[]')
+    amenities = db.Column(db.Text, default='[]')
+    description = db.Column(db.Text)
+    emergency_contact = db.Column(db.String(64))
+    status = db.Column(db.String(20), default='available')  # available, booked, maintenance
+    rating = db.Column(db.Float, default=0.0)
+    total_reviews = db.Column(db.Integer, default=0)
+    total_deliveries = db.Column(db.Integer, default=0)
+    area = db.Column(db.String(128))
+    city = db.Column(db.String(128))
+    lat = db.Column(db.Float)
+    long = db.Column(db.Float)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    owner = db.relationship('User', backref='tanker_listings')
+
+    def __repr__(self):
+        return f'<TankerListing {self.vehicle_number}>'
+
+
+class TankerBooking(db.Model):
+    """
+    Booking made by a customer against a tanker listing.
+    """
+    __tablename__ = 'tanker_booking'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tanker_id = db.Column(db.Integer, db.ForeignKey('tanker_listing.id'), nullable=False)
+    customer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    delivery_address = db.Column(db.String(256))
+    delivery_pincode = db.Column(db.String(16))
+    quantity = db.Column(db.Float, nullable=False)
+    total_amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, confirmed, in_transit, completed, cancelled
+    scheduled_time = db.Column(db.DateTime)
+    delivered_time = db.Column(db.DateTime)
+    customer_rating = db.Column(db.Integer)
+    customer_review = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    tanker = db.relationship('TankerListing', backref='bookings')
+    customer = db.relationship('User', backref='tanker_bookings')
+
+    def __repr__(self):
+        return f'<TankerBooking {self.id}>'
+
 class TankerOrder(db.Model):
     """
     TankerOrder model for booking water deliveries.

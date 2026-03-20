@@ -7,6 +7,8 @@ import {
   leakDetectionAPI,
   conservationAPI,
   societyAPI,
+  tankerMarketplaceAPI,
+  tankerOwnerAPI,
   authAPI,
   Supplier,
   ConsumptionReport,
@@ -15,6 +17,9 @@ import {
   ConservationTip,
   Challenge,
   UserChallenge,
+  OwnerBooking,
+  OwnerDashboard,
+  OwnerEarnings,
 } from '../services/api';
 
 // Auth hooks
@@ -55,6 +60,25 @@ export const useSuppliers = () => {
   return useQuery({
     queryKey: ['suppliers'],
     queryFn: suppliersAPI.getSuppliers,
+  });
+};
+
+export const useMarketplaceTankers = () => {
+  return useQuery({
+    queryKey: ['marketplace-tankers'],
+    queryFn: tankerMarketplaceAPI.getTankers,
+  });
+};
+
+export const useCreateMarketplaceBooking = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: tankerMarketplaceAPI.createBooking,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-tankers'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+    },
   });
 };
 
@@ -169,6 +193,97 @@ export const usePlaceBulkOrder = () => {
     mutationFn: societyAPI.placeBulkOrder,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['society-dashboard'] });
+    },
+  });
+};
+
+// Tanker owner hooks
+export const useOwnerDashboard = () => {
+  return useQuery<OwnerDashboard>({
+    queryKey: ['owner-dashboard'],
+    queryFn: tankerOwnerAPI.getDashboard,
+  });
+};
+
+export const useOwnerEarnings = () => {
+  return useQuery<OwnerEarnings>({
+    queryKey: ['owner-earnings'],
+    queryFn: tankerOwnerAPI.getEarnings,
+  });
+};
+
+export const useOwnerTankers = () => {
+  return useQuery<Supplier[]>({
+    queryKey: ['owner-tankers'],
+    queryFn: tankerOwnerAPI.getTankers,
+  });
+};
+
+export const useOwnerCreateTanker = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: tankerOwnerAPI.createTanker,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-tankers'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-tankers'] });
+    },
+  });
+};
+
+export const useOwnerUpdateTanker = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tankerId, data }: { tankerId: number; data: any }) => tankerOwnerAPI.updateTanker(tankerId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-tankers'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-tankers'] });
+    },
+  });
+};
+
+export const useOwnerDeleteTanker = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: tankerOwnerAPI.deleteTanker,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-tankers'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-tankers'] });
+    },
+  });
+};
+
+export const useOwnerUpdateTankerStatus = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tankerId, status }: { tankerId: number; status: 'available' | 'booked' | 'maintenance' }) =>
+      tankerOwnerAPI.updateTankerStatus(tankerId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-tankers'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-tankers'] });
+    },
+  });
+};
+
+export const useOwnerBookings = () => {
+  return useQuery<OwnerBooking[]>({
+    queryKey: ['owner-bookings'],
+    queryFn: tankerOwnerAPI.getBookings,
+  });
+};
+
+export const useOwnerUpdateBookingStatus = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bookingId, status }: { bookingId: number; status: 'pending' | 'confirmed' | 'in_transit' | 'completed' | 'cancelled' }) =>
+      tankerOwnerAPI.updateBookingStatus(bookingId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-earnings'] });
+      queryClient.invalidateQueries({ queryKey: ['owner-tankers'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace-tankers'] });
     },
   });
 };
