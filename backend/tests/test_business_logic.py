@@ -1,14 +1,20 @@
 import pytest
 from unittest.mock import patch
-from app import db
-# Adjust these imports to match your actual model names
-from app.models import User, TankerListing, TankerOrder, Challenge, UserChallenge
+
+# 1. Import db directly from app.py
+from app import db 
+
+# 2. FIX: Import directly from models.py (since it sits next to app.py)
+from models import User, TankerListing, TankerOrder, Challenge, UserChallenge
 
 # ==========================================
 # PART A: FINANCIAL & STRIPE TESTS
 # ==========================================
 
-@patch('app.routes.stripe.PaymentIntent.create')
+# 3. FIX: Adjust the patch path. 
+# If your stripe logic is inside app.py, use 'app.stripe.PaymentIntent.create'
+# If it is inside a routes.py file, use 'routes.stripe.PaymentIntent.create'
+@patch('app.stripe.PaymentIntent.create') 
 def test_stripe_fractional_currency(mock_stripe, client):
     """Test A.1: Ensures exact fractional amounts are converted to paise."""
     mock_stripe.return_value.client_secret = "pi_123_secret"
