@@ -1,0 +1,33 @@
+services:
+  sonarqube:
+    image: sonarqube:26.3.0.120487-community
+    container_name: water_cicd_sonarqube
+    ports:
+      - "9000:9000"
+    networks:
+      - cicd_network
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_logs:/opt/sonarqube/logs
+
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: water_cicd_jenkins
+    user: root # Required to run Docker inside Jenkins
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    networks:
+      - cicd_network
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock # Allows Jenkins to build containers
+
+networks:
+  cicd_network:
+    driver: bridge
+
+volumes:
+  sonarqube_data:
+  sonarqube_logs:
+  jenkins_data:

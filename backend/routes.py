@@ -1214,7 +1214,8 @@ def create_payment_intent():
         booking_id = data["booking_id"]
         
         # Validate amount
-        if amount <= 0:
+        # We set a minimum amount of 40 rupees to avoid microtransactions that Stripe might block
+        if amount <= 40:
             return jsonify({"error": "Invalid amount"}), 400
         
         # Create payment intent

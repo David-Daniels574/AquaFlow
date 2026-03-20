@@ -1,0 +1,48 @@
+pipeline {
+    agent {
+        // Run tests inside an ephemeral Docker container natively
+        docker { 
+            image 'python:3.10-slim' 
+            args '-u root'
+        }
+    }
+
+    environment {
+        SCANNER_HOME = tool 'SonarQubeScanner'
+    }
+
+    stages {
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                pip install -r backend/requirements.txt
+                pip install pytest pytest-cov
+                '''
+            }
+        }
+
+        stage('Run API Tests') {
+            steps {
+                sh '''
+                # Run pytest and output coverage to xml
+                export FLASK_ENV=testing
+                pytest tests/ --cov=backend/ --cov-report=xml
+                '''
+            }
+        }
+
+        stage('SonarQube Security Scan') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                    $SCANNER_HOME/bin/sonar-scanner \
+                      -Dsonar.projectKey=water-conservation-api \
+                      -Dsonar.sources=backend/ \
+                      -Dsonar.python.coverage.reportPaths=coverage.xml \
+                      -Dsonar.host.url=http://sonarqube:9000
+                    '''
+                }
+            }
+        }
+    }
+}
