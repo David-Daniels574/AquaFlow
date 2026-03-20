@@ -24,12 +24,15 @@ pipeline {
         stage('Run API Tests') {
             steps {
                 sh '''
-                # Run pytest and output coverage to xml
                 export FLASK_ENV=testing
-                pytest tests/ --cov=backend/ --cov-report=xml
+                
+                # Tell Python that your app code lives in the backend folder
+                export PYTHONPATH=./backend
+                
+                # Point Pytest exactly to the tests folder and generate the XML
+                pytest backend/tests/ --cov=backend/ --cov-report=xml
                 '''
             }
-        }
 
         stage('SonarQube Security Scan') {
             steps {
