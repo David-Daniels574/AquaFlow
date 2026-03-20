@@ -74,11 +74,12 @@ def test_challenge_completion_boundary(client):
         
         uc = UserChallenge(id=1, user_id=1, challenge_id=1, progress=90.0, status='active')
         
-        # FIX: Added the missing 'short_desc' required by your database
+        # FIX: Added the missing 'full_desc' required by your database
         chal = Challenge(
             id=1, 
             name="Save Water 101", 
             short_desc="Save 100 liters of water", 
+            full_desc="Detailed instructions on how to save 100 liters of water...", # <-- ADDED THIS
             eco_points=50, 
             water_save_potential=100
         )
