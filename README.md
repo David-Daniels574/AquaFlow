@@ -286,3 +286,16 @@ docker-compose down        # stop and remove containers
 docker-compose down -v     # also wipe volumes (full reset)
 docker-compose -f docker-compose.cicd.yml down -v # shut down the CI/CD environment
 ```
+
+### To test use
+**User**
+```bash
+john_1
+pass123
+```
+
+```bash
+**Tanker owner**
+owner_raj
+owner123
+```
