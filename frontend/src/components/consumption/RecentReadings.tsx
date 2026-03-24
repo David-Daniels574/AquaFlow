@@ -2,7 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
 import { apiRequest } from "@/services/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,7 +19,6 @@ interface ApiResponse {
 
 interface TableReading {
   date: string;
-  meterReading: number;
   consumption: number;
 }
 
@@ -46,7 +44,6 @@ export function RecentReadings() {
         const tableData: TableReading[] = sortedReadings.map((item) => {
           return {
             date: item.date,
-            meterReading: 0, // Backend no longer sends cumulative readings, just usage
             consumption: item.usage
           };
         });
@@ -74,7 +71,6 @@ export function RecentReadings() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Meter Reading (L)</TableHead>
                 <TableHead>Consumption (L)</TableHead>
               </TableRow>
             </TableHeader>
@@ -82,7 +78,6 @@ export function RecentReadings() {
               {Array.from({ length: 6 }).map((_, index) => (
                 <TableRow key={index}>
                   <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
                 </TableRow>
               ))}
@@ -116,7 +111,6 @@ export function RecentReadings() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date</TableHead>
-                <TableHead>Meter Reading (L)</TableHead>
                 <TableHead>Consumption (L)</TableHead>
               </TableRow>
             </TableHeader>
@@ -130,13 +124,12 @@ export function RecentReadings() {
                   className="border-b"
                 >
                   <TableCell>{reading.date}</TableCell>
-                  <TableCell>{reading.meterReading.toLocaleString()}</TableCell>
                   <TableCell>{reading.consumption.toLocaleString()}</TableCell>
                 </motion.tr>
               ))}
               {readings.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={3} className="text-center text-muted-foreground">
+                  <TableCell colSpan={2} className="text-center text-muted-foreground">
                     No recent readings available
                   </TableCell>
                 </TableRow>

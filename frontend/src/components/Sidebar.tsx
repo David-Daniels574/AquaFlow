@@ -16,28 +16,32 @@ import { getCurrentUserRole } from "@/services/api";
 export function Sidebar() {
   const role = getCurrentUserRole();
 
+  const isOwner = role === "tanker_owner" || role === "supplier";
+
   const navItems = [
     { 
       name: "Water Tanker Marketplace", 
       path: "/marketplace", 
       icon: Truck 
     },
-    { 
-      name: "Consumption Tracking", 
-      path: "/consumption", 
-      icon: BarChart3 
-    },
-    { 
-      name: "Conservation Hub", 
-      path: "/conservation", 
-      icon: Leaf 
-    },
-    { 
-      name: "Society Dashboard", 
-      path: "/society", 
-      icon: Building2 
-    },
-    ...(role === "tanker_owner" || role === "supplier" ? [
+    ...(!isOwner ? [
+      { 
+        name: "Consumption Tracking", 
+        path: "/consumption", 
+        icon: BarChart3 
+      },
+      { 
+        name: "Conservation Hub", 
+        path: "/conservation", 
+        icon: Leaf 
+      },
+      { 
+        name: "Society Dashboard", 
+        path: "/society", 
+        icon: Building2 
+      },
+    ] : []),
+    ...(isOwner ? [
       { name: "Owner Dashboard", path: "/owner-dashboard", icon: Home, end: true },
       { name: "My Tankers", path: "/owner-dashboard/tankers", icon: Package },
       { name: "Bookings", path: "/owner-dashboard/bookings", icon: ClipboardList },
