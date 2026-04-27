@@ -1,0 +1,14 @@
+.env
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+
+# OS files
+.DS_Store
+
+node_modules/
+app.db

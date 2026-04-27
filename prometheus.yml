@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s  # Scrape every 5 seconds for real-time feel
+
+scrape_configs:
+  - job_name: 'flask_backend'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['water_mgmt_backend:5000'] # Connects internally via Docker DNS

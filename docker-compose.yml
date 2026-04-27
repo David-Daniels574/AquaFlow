@@ -1,0 +1,127 @@
+services:
+  # --- Caching Layer ---
+  redis:
+    image: redis:alpine
+    container_name: water_mgmt_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - water_network
+
+  # --- Web Layer ---
+  backend:
+    build: ./backend
+    container_name: water_mgmt_backend
+    restart: always
+    ports:
+      - "5001:5000"
+    env_file:
+      - ./backend/.env
+    environment:
+      #replace with actual url
+      - DATABASE_URL=postgresql://user:password@db:5432/waterdb
+      #- FLASK_ENV=production
+      - FLASK_ENV=development
+      - REDIS_URL=redis://redis:6379/0  
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    
+    depends_on:
+      - db
+      - redis
+    networks:
+      - water_network
+
+  # --- Database Layer ---
+  db:
+    image: postgres:13-alpine
+    container_name: water_mgmt_db
+    restart: always
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=waterdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - water_network
+
+# --- Spark Master ---
+  spark-master:
+    image: apache/spark:3.5.0
+    container_name: spark_master
+    # CHANGE 1: Add volumes to mount code and jars
+    volumes:
+      - ./spark_libs:/opt/spark/jars_external
+      - ./analytics:/opt/analytics
+      - ./data:/opt/analytics/data
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    networks:
+      - water_network
+
+
+    #REMOVE ENVIRONMENT FOR AWS
+    environment:
+      - SPARK_JDBC_URL=jdbc:postgresql://db:5432/waterdb
+      - DB_USER=user
+      - DB_PASS=password
+
+  # --- Spark Worker ---
+  spark-worker:
+    image: apache/spark:3.5.0
+    container_name: spark_worker
+    # CHANGE 2: Worker also needs access to the JARs
+    volumes:
+      - ./spark_libs:/opt/spark/jars_external
+      - ./data:/opt/analytics/data
+      - ./analytics:/opt/analytics
+    command: >
+      /opt/spark/bin/spark-class
+      org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077
+    depends_on:
+      - spark-master
+    networks:
+      - water_network
+    environment:
+      - SPARK_JDBC_URL=jdbc:postgresql://db:5432/waterdb # <-- ADDED: Workers need DB access
+      - DB_USER=user
+      - DB_PASS=password
+
+# --- Monitoring Layer ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: water_mgmt_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - water_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: water_mgmt_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin  # Default password
+    depends_on:
+      - prometheus
+    networks:
+      - water_network
+
+networks:
+  water_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
