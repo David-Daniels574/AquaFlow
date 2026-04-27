@@ -33,6 +33,15 @@ services:
     networks:
       - water_network
 
+  frontend:
+    build: ./frontend
+    container_name: water_mgmt_frontend
+    restart: always
+    ports:
+      - "3000:80"
+    networks:
+      - water_network
+
   # --- Database Layer ---
   db:
     image: postgres:13-alpine
@@ -111,7 +120,7 @@ services:
     image: grafana/grafana:latest
     container_name: water_mgmt_grafana
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin  # Default password
     depends_on:
