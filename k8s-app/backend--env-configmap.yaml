@@ -1,0 +1,11 @@
+apiVersion: v1
+data:
+  DATABASE_URL: postgresql://user:password@db:5432/waterdb
+  JWT_SECRET_KEY: 2ca610a84c0e3b7141ffc44f877cea61eb7a3a97ea0a5f33eede797ea423c6b9
+  SECRET_KEY: 191692911738ba7745086f9afa4b7402e5191791eb5058d12cd84c0c8cf3dc5c
+  STRIPE_SECRET_KEY: sk_test_51SjnuaBEWvMNoTR0k8UlgWpxdg4PQBqpQYyCwO05X3GvRsUg6ypURmOFQuq9XSAraxR5uudZ6iZa8f9K5DiLYg4g00Cp0HDle0
+kind: ConfigMap
+metadata:
+  labels:
+    io.kompose.service: backend-backend--env
+  name: backend--env
