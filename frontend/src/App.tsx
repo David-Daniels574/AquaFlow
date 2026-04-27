@@ -79,14 +79,14 @@ const App = () => {
             } />
             <Route path="/consumption" element={
               <Layout>
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={["user", "society_admin"]}>
                   <ConsumptionPage />
                 </ProtectedRoute>
               </Layout>
             } />
             <Route path="/conservation" element={
               <Layout>
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={["user", "society_admin"]}>
                   <ConservationHubPage />
                 </ProtectedRoute>
               </Layout>
@@ -95,7 +95,7 @@ const App = () => {
               path="/society"
               element={
                 <Layout>
-                  <ProtectedRoute>
+                  <ProtectedRoute allowedRoles={["user", "society_admin"]}>
                     <SocietyDashboardPage />
                   </ProtectedRoute>
                 </Layout>

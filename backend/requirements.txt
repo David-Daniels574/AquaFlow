@@ -12,4 +12,10 @@ Flask-Caching
 redis
 prometheus-flask-exporter==0.23.0
 pandas
+<<<<<<< HEAD
 pyarrow
+=======
+pyarrow
+pytest
+pytest-cov
+>>>>>>> ef41028992d414d624bbd2afc66f4481efb5c6af

@@ -16,21 +16,44 @@ export function Header() {
     const token = getAuthToken();
     setIsAuthenticated(!!token);
     setRole(getCurrentUserRole());
-  }, [location]);
+  }, [location, getAuthToken]);
 
   const handleLogout = () => {
     clearAuthToken();
     setIsAuthenticated(false);
+    setRole(null);
     navigate("/login");
   };
 
-  const navItems = [
-    { name: "Water Tanker Marketplace", path: "/marketplace" },
-    { name: "Consumption Tracking", path: "/consumption" },
-    { name: "Conservation Hub", path: "/conservation" },
-    { name: "Society Dashboard", path: "/society" },
-  ];
+  const isOwner = role === "tanker_owner" || role === "supplier";
 
+  const navItems = [
+    { 
+      name: "Water Tanker Marketplace", 
+      path: "/marketplace"
+    },
+    ...(!isOwner ? [
+      { 
+        name: "Consumption Tracking", 
+        path: "/consumption"
+      },
+      { 
+        name: "Conservation Hub", 
+        path: "/conservation"
+      },
+      { 
+        name: "Society Dashboard", 
+        path: "/society" 
+      },
+    ] : []),
+    ...(isOwner ? [
+      { name: "Owner Dashboard", path: "/owner-dashboard",  end: true },
+      { name: "My Tankers", path: "/owner-dashboard/tankers" },
+      { name: "Bookings", path: "/owner-dashboard/bookings" },
+      { name: "Earnings", path: "/owner-dashboard/earnings" },
+    ] : []),
+  ];
+  
   return (
     <header className="bg-primary text-primary-foreground px-6 py-4">
       <div className="flex items-center justify-between">

@@ -1,0 +1,46 @@
+pipeline {
+    // 1. Run the overall pipeline on the Jenkins server itself
+    agent any 
+
+    environment {
+        SCANNER_HOME = tool 'SonarQubeScanner'
+    }
+
+    stages {
+        stage('Install & Run API Tests') {
+            // 2. Spin up the Python container ONLY for this specific stage
+            agent {
+                docker { 
+                    image 'python:3.10-slim' 
+                    args '-u root'
+                }
+            }
+            steps {
+                sh '''
+                pip install -r backend/requirements.txt
+                pip install pytest pytest-cov
+                
+                export FLASK_ENV=testing
+                export PYTHONPATH=./backend
+                
+                pytest backend/tests/ --cov=backend/ --cov-report=xml
+                '''
+            }
+        }
+
+        stage('SonarQube Security Scan') {
+            // 3. This stage drops back to the Jenkins server to run the Java-based scanner
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                    $SCANNER_HOME/bin/sonar-scanner \
+                      -Dsonar.projectKey=water-conservation-api \
+                      -Dsonar.sources=backend/ \
+                      -Dsonar.python.coverage.reportPaths=coverage.xml \
+                      -Dsonar.host.url=http://sonarqube:9000
+                    '''
+                }
+            }
+        }
+    }
+}
