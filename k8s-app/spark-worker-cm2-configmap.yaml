@@ -1,0 +1,41 @@
+apiVersion: v1
+data:
+  Dockerfile: |-
+    # Use Python 3.9 Slim as base
+    FROM python:3.9-slim-bookworm
+
+    # 1. Install Java (Required for Spark) and wget
+    RUN apt-get update && \
+        apt-get install -y openjdk-17-jre-headless wget procps && \
+        rm -rf /var/lib/apt/lists/*
+
+    WORKDIR /app
+
+    # 2. Download the Postgres JDBC Driver (Required for Spark to talk to DB)
+    # We place it in /app/postgresql.jar
+    RUN wget https://jdbc.postgresql.org/download/postgresql-42.7.8.jar -O /app/postgresql.jar
+
+    # 3. Install Python dependencies
+    COPY requirements.txt .
+    RUN pip install --no-cache-dir -r requirements.txt
+
+    # 4. Copy your script
+    COPY process_data.py .
+
+    # 5. Set JAVA_HOME environment variable
+    ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+    # 6. Run the script using spark-submit, pointing to the downloaded JAR
+    CMD ["spark-submit", "--jars", "/app/postgresql.jar", "--driver-class-path", "/app/postgresql.jar", "process_data.py"]
+  process_data.py: "# process_data.py\nimport sys\nimport os\nfrom pyspark.sql import SparkSession\nfrom pyspark.sql.functions import col, max as _max, lag, coalesce, lit\nfrom pyspark.sql.window import Window\n\njar_path = \"/app/postgresql.jar\"\njdbc_url = os.environ.get(\"SPARK_JDBC_URL\")\ndb_user = os.environ.get(\"DB_USER\")\ndb_pass = os.environ.get(\"DB_PASS\")\n\nif not all([jdbc_url, db_user, db_pass]):\n    print(\"ERROR: Missing DB credentials.\")\n    sys.exit(1)\n\nspark = SparkSession.builder \\\n    .appName(\"WaterConsumptionBatchJob\") \\\n    .getOrCreate()\n\ndb_props = {\"user\": db_user, \"password\": db_pass, \"driver\": \"org.postgresql.Driver\"}\n\n# 1. Read Raw IoT Data from Parquet\nprint(\">>> Reading Parquet Data Lake...\")\n# Spark automatically discovers the 'date' column from the folder structure!\ndf_raw = spark.read.parquet(\"/opt/analytics/data/raw/water_readings/\")\n\n# 2. Get End-of-Day Readings\n# Since meters only go up, daily usage = Max(reading today) - Max(reading yesterday)\ndaily_max = df_raw.groupBy(\"user_id\", \"society_id\", \"date\") \\\n                  .agg(_max(\"reading\").alias(\"end_of_day_reading\"))\n\n# 3. Calculate Deltas (Usage)\nwindow_spec = Window.partitionBy(\"user_id\").orderBy(\"date\")\ndf_with_lag = daily_max.withColumn(\"prev_reading\", lag(\"end_of_day_reading\").over(window_spec))\n\n# For the very first day in the dataset, if prev_reading is NULL, \n# in a real production system we would join with the UserMeterState table here.\n# For historical backfill processing, we assume 0 or drop the first day's delta.\ndf_usage = df_with_lag.withColumn(\"total_usage_liters\", col(\"end_of_day_reading\") - coalesce(col(\"prev_reading\"), col(\"end_of_day_reading\"))) \\\n                      .filter(col(\"total_usage_liters\") > 0)\n\ndf_final = df_usage.select(\"user_id\", \"society_id\", \"date\", \"total_usage_liters\")\n\n# 4. Write to Postgres Serving Layer\nprint(\">>> Writing Daily Aggregations to DB...\")\ntry:\n    # mode=\"append\" is better for daily batch, but \"overwrite\" is safe for local testing\n    df_final.write.jdbc(jdbc_url, \"user_daily_usage\", mode=\"overwrite\", properties=db_props)\n    \n    # 5. Update State Table (Max reading across all processed data)\n    latest_state = daily_max.groupBy(\"user_id\").agg(_max(\"end_of_day_reading\").alias(\"last_reading\"), _max(\"date\").alias(\"last_updated\"))\n    latest_state.write.jdbc(jdbc_url, \"user_meter_state\", mode=\"overwrite\", properties=db_props)\n\n    print(\">>> Batch Processing Complete!\")\nexcept Exception as e:\n    print(f\"Error writing to DB: {e}\")\n    sys.exit(1)\n\nspark.stop()"
+  requirements.txt: |-
+    psycopg2-binary
+    pyspark==3.5.0
+    pandas
+    shutil
+    pyarrow
+kind: ConfigMap
+metadata:
+  labels:
+    io.kompose.service: spark-worker
+  name: spark-worker-cm2

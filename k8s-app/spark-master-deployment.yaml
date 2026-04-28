@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert -f docker-compose.yml -o k8s-app/
+    kompose.version: 1.38.0 (HEAD)
+  labels:
+    io.kompose.service: spark-master
+  name: spark-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: spark-master
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert -f docker-compose.yml -o k8s-app/
+        kompose.version: 1.38.0 (HEAD)
+      labels:
+        io.kompose.service: spark-master
+    spec:
+      enableServiceLinks: false
+      containers:
+        - args:
+            - /opt/spark/bin/spark-class
+            - org.apache.spark.deploy.master.Master
+          env:
+            - name: DB_PASS
+              value: password
+            - name: DB_USER
+              value: user
+            - name: SPARK_JDBC_URL
+              value: jdbc:postgresql://db:5432/waterdb
+          image: apache/spark:3.5.0
+          imagePullPolicy: IfNotPresent
+          name: spark-master
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+            - containerPort: 7077
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /opt/analytics
+              name: spark-master-cm1
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            name: spark-master-cm1
+          name: spark-master-cm1
