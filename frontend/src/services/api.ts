@@ -1,6 +1,6 @@
 // API service layer for communicating with Flask backend
 
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
 
 // Types for API responses
 export interface Supplier {
@@ -244,14 +244,14 @@ export const authAPI = {
     lat?: number;
     long?: number;
   }) => {
-    return apiRequest<{ message: string }>('/register', {
+    return apiRequest<{ message: string }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
   },
 
   login: async (credentials: { identifier: string; password: string }) => {
-    const response = await apiRequest<{ access_token: string }>('/login', {
+    const response = await apiRequest<{ access_token: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
@@ -269,7 +269,7 @@ export const authAPI = {
       city?: string;
       lat?: number;
       long?: number;
-    }>('/profile');
+    }>('/auth/profile');
   },
 
   updateProfile: async (profileData: {
@@ -278,7 +278,7 @@ export const authAPI = {
     lat?: number;
     long?: number;
   }) => {
-    return apiRequest<{ message: string }>('/profile', {
+    return apiRequest<{ message: string }>('/auth/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData),
     });
@@ -288,7 +288,7 @@ export const authAPI = {
 // Suppliers API calls
 export const suppliersAPI = {
   getSuppliers: async (): Promise<Supplier[]> => {
-    return apiRequest<Supplier[]>('/suppliers');
+    return apiRequest<Supplier[]>('/supplier/suppliers');
   },
 
   bookTanker: async (orderData: {
@@ -297,7 +297,7 @@ export const suppliersAPI = {
     price: number;
     society_id?: number;
   }) => {
-    return apiRequest<{ message: string; order_id: number }>('/book_tanker', {
+    return apiRequest<{ message: string; order_id: number }>('/bookings/book_tanker', {
       method: 'POST',
       body: JSON.stringify(orderData),
     });
@@ -309,7 +309,7 @@ export const suppliersAPI = {
       lat?: number;
       long?: number;
       delivery_time?: string;
-    }>(`/track_order/${orderId}`);
+    }>(`/bookings/track_order/${orderId}`);
   },
 };
 
@@ -320,7 +320,7 @@ export const consumptionAPI = {
     society_id?: number;
     timestamp?: string;
   }) => {
-    return apiRequest<{ message: string }>('/log_reading', {
+    return apiRequest<{ message: string }>('/analytics/log_reading', {
       method: 'POST',
       body: JSON.stringify(readingData),
     });
@@ -331,7 +331,7 @@ export const consumptionAPI = {
       period,
       detailed: detailed.toString(),
     });
-    return apiRequest<ConsumptionReport>(`/consumption_report?${params}`);
+    return apiRequest<ConsumptionReport>(`/analytics/consumption_report?${params}`);
   },
 };
 
@@ -345,46 +345,46 @@ export const leakDetectionAPI = {
       message: string;
       description?: string;
       history: LeakEvent[];
-    }>(`/leak_detection?threshold=${threshold}`);
+    }>(`/analytics/leak_detection?threshold=${threshold}`);
   },
 };
 
 // Conservation API calls
 export const conservationAPI = {
   getConservationTips: async (location: string = 'urban_india'): Promise<ConservationTip[]> => {
-    return apiRequest<ConservationTip[]>(`/conservation_tips?location=${location}`);
+    return apiRequest<ConservationTip[]>(`/gamification/conservation_tips?location=${location}`);
   },
 
   getChallenges: async (): Promise<Challenge[]> => {
-    return apiRequest<Challenge[]>('/challenges');
+    return apiRequest<Challenge[]>('/gamification/challenges');
   },
 
   startChallenge: async (challengeId: number) => {
-    return apiRequest<{ message: string; user_challenge_id: number }>(`/start_challenge/${challengeId}`, {
+    return apiRequest<{ message: string; user_challenge_id: number }>(`/gamification/start_challenge/${challengeId}`, {
       method: 'POST',
     });
   },
 
   getUserChallenges: async (): Promise<UserChallenge[]> => {
-    return apiRequest<UserChallenge[]>('/user_challenges');
+    return apiRequest<UserChallenge[]>('/gamification/user_challenges');
   },
 
   updateChallengeProgress: async (userChallengeId: number, progress: number) => {
-    return apiRequest<{ message: string }>(`/update_challenge_progress/${userChallengeId}`, {
+    return apiRequest<{ message: string }>(`/gamification/update_challenge_progress/${userChallengeId}`, {
       method: 'PUT',
       body: JSON.stringify({ progress }),
     });
   },
 
   getConservationSummary: async (): Promise<ConservationSummary> => {
-    return apiRequest<ConservationSummary>('/conservation_summary');
+    return apiRequest<ConservationSummary>('/analytics/conservation_summary');
   },
 };
 
 // Society management API calls
 export const societyAPI = {
   getSocietyDashboard: async (): Promise<SocietyDashboard> => {
-    return apiRequest<SocietyDashboard>('/society_dashboard');
+    return apiRequest<SocietyDashboard>('/analytics/society_dashboard');
   },
 
   placeBulkOrder: async (orderData: {
@@ -393,7 +393,7 @@ export const societyAPI = {
     price: number;
     society_id: number;
   }) => {
-    return apiRequest<{ message: string; order_id: number }>('/society_bulk_order', {
+    return apiRequest<{ message: string; order_id: number }>('/bookings/society_bulk_order', {
       method: 'POST',
       body: JSON.stringify(orderData),
     });
@@ -402,7 +402,7 @@ export const societyAPI = {
 
 export const tankerMarketplaceAPI = {
   getTankers: async (): Promise<Supplier[]> => {
-    return apiRequest<Supplier[]>('/tankers');
+    return apiRequest<Supplier[]>('/supplier/tankers');
   },
 
   createBooking: async (bookingData: {
@@ -413,7 +413,7 @@ export const tankerMarketplaceAPI = {
     delivery_pincode?: string;
     scheduled_time?: string;
   }) => {
-    return apiRequest<{ message: string; booking_id: number }>('/bookings', {
+    return apiRequest<{ message: string; booking_id: number }>('/bookings/bookings', {
       method: 'POST',
       body: JSON.stringify(bookingData),
     });
@@ -422,15 +422,15 @@ export const tankerMarketplaceAPI = {
 
 export const tankerOwnerAPI = {
   getDashboard: async (): Promise<OwnerDashboard> => {
-    return apiRequest<OwnerDashboard>('/owner/dashboard');
+    return apiRequest<OwnerDashboard>('/supplier/owner/dashboard');
   },
 
   getEarnings: async (): Promise<OwnerEarnings> => {
-    return apiRequest<OwnerEarnings>('/owner/earnings');
+    return apiRequest<OwnerEarnings>('/supplier/owner/earnings');
   },
 
   getTankers: async (): Promise<Supplier[]> => {
-    return apiRequest<Supplier[]>('/tankers/owner');
+    return apiRequest<Supplier[]>('/supplier/tankers/owner');
   },
 
   createTanker: async (tankerData: {
@@ -447,7 +447,7 @@ export const tankerOwnerAPI = {
     area?: string;
     city?: string;
   }) => {
-    return apiRequest<{ message: string; tanker: Supplier }>('/tankers', {
+    return apiRequest<{ message: string; tanker: Supplier }>('/supplier/tankers', {
       method: 'POST',
       body: JSON.stringify(tankerData),
     });
@@ -471,34 +471,34 @@ export const tankerOwnerAPI = {
       status: "available" | "booked" | "maintenance";
     }>
   ) => {
-    return apiRequest<{ message: string; tanker: Supplier }>(`/tankers/${tankerId}`, {
+    return apiRequest<{ message: string; tanker: Supplier }>(`/supplier/tankers/${tankerId}`, {
       method: 'PUT',
       body: JSON.stringify(tankerData),
     });
   },
 
   deleteTanker: async (tankerId: number) => {
-    return apiRequest<{ message: string }>(`/tankers/${tankerId}`, {
+    return apiRequest<{ message: string }>(`/supplier/tankers/${tankerId}`, {
       method: 'DELETE',
     });
   },
 
   updateTankerStatus: async (tankerId: number, status: "available" | "booked" | "maintenance") => {
-    return apiRequest<{ message: string; tanker: Supplier }>(`/tankers/${tankerId}/status`, {
+    return apiRequest<{ message: string; tanker: Supplier }>(`/supplier/tankers/${tankerId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });
   },
 
   getBookings: async (): Promise<OwnerBooking[]> => {
-    return apiRequest<OwnerBooking[]>('/bookings/owner');
+    return apiRequest<OwnerBooking[]>('/bookings/bookings/owner');
   },
 
   updateBookingStatus: async (
     bookingId: number,
     status: "pending" | "confirmed" | "in_transit" | "completed" | "cancelled"
   ) => {
-    return apiRequest<{ message: string }>(`/bookings/${bookingId}/status`, {
+    return apiRequest<{ message: string }>(`/bookings/bookings/${bookingId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });

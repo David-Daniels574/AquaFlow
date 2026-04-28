@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAuthToken } from "@/services/api";
 
-const API_URL = "http://localhost:5001/api";
+const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
 
 // --- Types ---
 export interface Broadcast {
@@ -59,21 +59,21 @@ const postWithAuth = async (endpoint: string, data: any) => {
 export function useBroadcasts() {
   return useQuery({
     queryKey: ["broadcasts"],
-    queryFn: () => fetchWithAuth("/community/broadcasts"),
+    queryFn: () => fetchWithAuth("/gamification/community/broadcasts"),
   });
 }
 
 export function useThreads() {
   return useQuery({
     queryKey: ["threads"],
-    queryFn: () => fetchWithAuth("/community/threads"),
+    queryFn: () => fetchWithAuth("/gamification/community/threads"),
   });
 }
 
 export function useThreadComments(threadId: number | null) {
   return useQuery({
     queryKey: ["comments", threadId],
-    queryFn: () => fetchWithAuth(`/community/threads/${threadId}/comments`),
+    queryFn: () => fetchWithAuth(`/gamification/community/threads/${threadId}/comments`),
     enabled: !!threadId,
   });
 }
@@ -82,7 +82,7 @@ export function useCreateThread() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (newThread: { title: string; content: string; category: string }) =>
-      postWithAuth("/community/threads", newThread),
+      postWithAuth("/gamification/community/threads", newThread),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["threads"] });
     },
@@ -93,7 +93,7 @@ export function useCreateComment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ threadId, content }: { threadId: number; content: string }) =>
-      postWithAuth(`/community/threads/${threadId}/comments`, { content }),
+      postWithAuth(`/gamification/community/threads/${threadId}/comments`, { content }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["comments", variables.threadId] });
       queryClient.invalidateQueries({ queryKey: ["threads"] });

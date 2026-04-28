@@ -1,5 +1,4 @@
 services:
-  # --- Caching Layer ---
   redis:
     image: redis:alpine
     container_name: water_mgmt_redis
@@ -8,32 +7,18 @@ services:
     networks:
       - water_network
 
-  # --- Web Layer ---
-  backend:
-    build: ./backend
-    container_name: water_mgmt_backend
-    restart: always
-    ports:
-      - "5001:5000"
-    env_file:
-      - ./backend/.env
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.67.0
+    container_name: water_mgmt_redis_exporter
     environment:
-      #replace with actual url
-      - DATABASE_URL=postgresql://user:password@db:5432/waterdb
-      #- FLASK_ENV=production
-      - FLASK_ENV=development
-      - REDIS_URL=redis://redis:6379/0  
-    volumes:
-      - ./backend:/app
-      - ./data:/app/data
-    
+      - REDIS_ADDR=redis://redis:6379
     depends_on:
-      - db
       - redis
+    ports:
+      - "9121:9121"
     networks:
       - water_network
 
-  # --- Database Layer ---
   db:
     image: postgres:13-alpine
     container_name: water_mgmt_db
@@ -41,19 +26,146 @@ services:
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=waterdb
+      - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backend/db_init:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"
     networks:
       - water_network
 
-# --- Spark Master ---
+  db_seeder:
+    build: ./backend
+    container_name: water_mgmt_db_seeder
+    env_file:
+      - ./backend/.env
+    environment:
+      - AUTH_DATABASE_URL=postgresql://user:password@db:5432/auth_db
+      - SUPPLIER_DATABASE_URL=postgresql://user:password@db:5432/supplier_db
+      - BOOKING_DATABASE_URL=postgresql://user:password@db:5432/booking_db
+      - GAMIFICATION_DATABASE_URL=postgresql://user:password@db:5432/gamification_db
+      - IOT_DATABASE_URL=postgresql://user:password@db:5432/iot_db
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
+    command: python populate_db.py
+    volumes:
+      - ./data:/data
+    depends_on:
+      - db
+    networks:
+      - water_network
+    profiles:
+      - tools
+
+  auth_service:
+    build: ./backend/auth_service
+    container_name: water_auth_service
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/auth_db
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
+    depends_on:
+      - db
+    networks:
+      - water_network
+
+  supplier_service:
+    build: ./backend/supplier_service
+    container_name: water_supplier_service
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/supplier_db
+      - REDIS_URL=redis://redis:6379/0
+      - AUTH_SERVICE_URL=http://auth_service:5000
+      - BOOKING_SERVICE_URL=http://booking_service:5000
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
+    depends_on:
+      - db
+      - redis
+      - auth_service
+    networks:
+      - water_network
+
+  booking_service:
+    build: ./backend/booking_service
+    container_name: water_booking_service
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/booking_db
+      - AUTH_SERVICE_URL=http://auth_service:5000
+      - SUPPLIER_SERVICE_URL=http://supplier_service:5000
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
+    depends_on:
+      - db
+      - auth_service
+      - supplier_service
+    networks:
+      - water_network
+
+  gamification_service:
+    build: ./backend/gamification_service
+    container_name: water_gamification_service
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/gamification_db
+      - AUTH_SERVICE_URL=http://auth_service:5000
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
+    depends_on:
+      - db
+      - auth_service
+    networks:
+      - water_network
+
+  iot_analytics_service:
+    build: ./backend/iot_analytics_service
+    container_name: water_iot_analytics_service
+    restart: always
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/iot_db
+      - AUTH_SERVICE_URL=http://auth_service:5000
+      - BOOKING_SERVICE_URL=http://booking_service:5000
+      - GAMIFICATION_SERVICE_URL=http://gamification_service:5000
+      - SUPPLIER_SERVICE_URL=http://supplier_service:5000
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-internal-dev-token}
+    depends_on:
+      - db
+      - auth_service
+      - booking_service
+      - gamification_service
+      - supplier_service
+    networks:
+      - water_network
+
+  api_gateway:
+    image: nginx:alpine
+    container_name: water_api_gateway
+    restart: always
+    depends_on:
+      - auth_service
+      - supplier_service
+      - booking_service
+      - gamification_service
+      - iot_analytics_service
+    ports:
+      - "5001:80"
+    volumes:
+      - ./backend/api_gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - water_network
+
   spark-master:
     image: apache/spark:3.5.0
     container_name: spark_master
-    # CHANGE 1: Add volumes to mount code and jars
     volumes:
       - ./spark_libs:/opt/spark/jars_external
       - ./analytics:/opt/analytics
@@ -64,21 +176,16 @@ services:
     ports:
       - "8080:8080"
       - "7077:7077"
+    environment:
+      - SPARK_JDBC_URL=jdbc:postgresql://db:5432/iot_db
+      - DB_USER=user
+      - DB_PASS=password
     networks:
       - water_network
 
-
-    #REMOVE ENVIRONMENT FOR AWS
-    environment:
-      - SPARK_JDBC_URL=jdbc:postgresql://db:5432/waterdb
-      - DB_USER=user
-      - DB_PASS=password
-
-  # --- Spark Worker ---
   spark-worker:
     image: apache/spark:3.5.0
     container_name: spark_worker
-    # CHANGE 2: Worker also needs access to the JARs
     volumes:
       - ./spark_libs:/opt/spark/jars_external
       - ./data:/opt/analytics/data
@@ -89,17 +196,18 @@ services:
       spark://spark-master:7077
     depends_on:
       - spark-master
-    networks:
-      - water_network
     environment:
-      - SPARK_JDBC_URL=jdbc:postgresql://db:5432/waterdb # <-- ADDED: Workers need DB access
+      - SPARK_JDBC_URL=jdbc:postgresql://db:5432/iot_db
       - DB_USER=user
       - DB_PASS=password
+    networks:
+      - water_network
 
-# --- Monitoring Layer ---
   prometheus:
     image: prom/prometheus:latest
     container_name: water_mgmt_prometheus
+    depends_on:
+      - redis_exporter
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
@@ -113,7 +221,12 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin  # Default password
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/microservices-overview.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
     networks:
@@ -125,3 +238,4 @@ networks:
 
 volumes:
   postgres_data:
+  grafana_data:

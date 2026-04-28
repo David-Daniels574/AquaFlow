@@ -1,12 +1,13 @@
 // src/services/paymentService.ts
 export async function createPaymentIntent(amount: number, bookingId: string) {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001";
   const token = localStorage.getItem('authToken');
   
   if (!token) {
     throw new Error("Authentication required. Please login.");
   }
 
-  const res = await fetch("http://localhost:5001/api/create-payment-intent", {
+  const res = await fetch(`${API_BASE_URL}/bookings/create-payment-intent`, {
     method: "POST",
     headers: { 
       "Content-Type": "application/json",

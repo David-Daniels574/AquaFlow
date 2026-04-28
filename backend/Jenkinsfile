@@ -7,8 +7,7 @@ pipeline {
     }
 
     stages {
-        stage('Install & Run API Tests') {
-            // 2. Spin up the Python container ONLY for this specific stage
+        stage('Run Backend Tests') {
             agent {
                 docker { 
                     image 'python:3.10-slim' 
@@ -17,26 +16,54 @@ pipeline {
             }
             steps {
                 sh '''
-                pip install -r backend/requirements.txt
+                pip install -r backend/auth_service/requirements.txt
+                pip install -r backend/supplier_service/requirements.txt
+                pip install -r backend/booking_service/requirements.txt
+                pip install -r backend/gamification_service/requirements.txt
+                pip install -r backend/iot_analytics_service/requirements.txt
+                pip install pandas pyarrow
                 pip install pytest pytest-cov
                 
                 export FLASK_ENV=testing
                 export PYTHONPATH=./backend
+
+                python -m compileall \
+                  backend/auth_service \
+                  backend/supplier_service \
+                  backend/booking_service \
+                  backend/gamification_service \
+                  backend/iot_analytics_service
                 
                 pytest backend/tests/ --cov=backend/ --cov-report=xml
                 '''
             }
         }
 
+        stage('Build Frontend') {
+            agent {
+                docker {
+                    image 'node:20-alpine'
+                }
+            }
+            steps {
+                sh '''
+                cd frontend
+                npm ci
+                npm run build
+                '''
+            }
+        }
+
         stage('SonarQube Security Scan') {
-            // 3. This stage drops back to the Jenkins server to run the Java-based scanner
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
                     $SCANNER_HOME/bin/sonar-scanner \
-                      -Dsonar.projectKey=water-conservation-api \
-                      -Dsonar.sources=backend/ \
+                      -Dsonar.projectKey=water-conservation-app \
+                      -Dsonar.sources=. \
                       -Dsonar.python.coverage.reportPaths=coverage.xml \
+                      -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info \
+                      -Dsonar.typescript.lcov.reportPaths=frontend/coverage/lcov.info \
                       -Dsonar.host.url=http://sonarqube:9000
                     '''
                 }

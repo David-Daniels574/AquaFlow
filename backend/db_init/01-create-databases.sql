@@ -1,0 +1,5 @@
+CREATE DATABASE auth_db;
+CREATE DATABASE supplier_db;
+CREATE DATABASE booking_db;
+CREATE DATABASE gamification_db;
+CREATE DATABASE iot_db;

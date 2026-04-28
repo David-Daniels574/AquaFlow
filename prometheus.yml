@@ -1,8 +1,33 @@
 global:
-  scrape_interval: 5s  # Scrape every 5 seconds for real-time feel
+  scrape_interval: 5s
 
 scrape_configs:
-  - job_name: 'flask_backend'
-    metrics_path: '/metrics'
+  - job_name: "auth_service"
+    metrics_path: "/metrics"
     static_configs:
-      - targets: ['water_mgmt_backend:5000'] # Connects internally via Docker DNS
+      - targets: ["water_auth_service:5000"]
+
+  - job_name: "supplier_service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["water_supplier_service:5000"]
+
+  - job_name: "booking_service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["water_booking_service:5000"]
+
+  - job_name: "gamification_service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["water_gamification_service:5000"]
+
+  - job_name: "iot_analytics_service"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["water_iot_analytics_service:5000"]
+
+  - job_name: "redis_exporter"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["water_mgmt_redis_exporter:9121"]

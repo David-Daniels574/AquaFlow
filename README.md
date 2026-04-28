@@ -6,38 +6,50 @@
 
 ## Overview
 
-The **Water Consumption Analytics Platform** is a scalable, cloud-native system that manages and analyzes water usage data for large residential societies, while serving as a marketplace layer between water tanker operators and society admins.
+The **Water Consumption Analytics Platform** is a cloud-native system for:
 
-The platform handles two fundamentally different workload profiles under one system:
+- low-latency transactional flows (auth, booking, payments, community)
+- scheduled analytical processing of IoT water readings
 
-- **Transactional workloads** — low-latency, user-facing operations: authentication, tanker booking, payments via Stripe, and a gamified eco-challenges system
-- **Analytical workloads** — high-throughput, scheduled batch processing of IoT sensor data for consumption aggregation and anomaly detection
-
-These are intentionally separated into independent compute layers so that a heavy Spark job cannot degrade API response times, and so each layer can be scaled, monitored, and deployed independently.
+The codebase was refactored from a monolith into **5 Flask microservices** behind an **Nginx API Gateway**.  
+This separation isolates failures, improves scalability, and keeps Spark batch workloads from degrading API response times.
 
 ---
 
 ## Architecture & Key Design Decisions
 
-### Why Microservices over a Monolith?
+### Why microservices over a monolith?
 
-The transactional and analytical workloads have opposing SLA requirements. The API must respond in milliseconds; the Spark jobs process potentially millions of IoT records and run for minutes. A monolith would force them to share resources, risking latency spikes during batch runs. Separating them allows independent scaling, failure isolation, and cost control.
+Transactional APIs require low latency, while Spark analytics are bursty and compute heavy. Splitting domains into services enables:
 
-### Why AWS ECS (Fargate) over EC2 or Lambda?
+- independent deployment and scaling
+- bounded blast radius
+- domain ownership by capability (auth, supplier, booking, gamification, analytics)
 
-Fargate was chosen to avoid EC2 instance management overhead while retaining container-level control. Lambda was ruled out because Spark jobs exceed Lambda's execution time and memory limits. Fargate provides the right middle ground: serverless infrastructure with long-running container support.
+### Why an Nginx API Gateway?
 
-### Why Ephemeral Spark over a Persistent Cluster?
+The gateway provides a single ingress (`:5001`) and handles:
 
-Running a persistent Spark cluster 24/7 would be cost-prohibitive for batch workloads that only run three times a day. Using AWS EventBridge to trigger an ECS Task on a schedule means compute spins up, processes data, writes results to RDS, and terminates — paying only for actual processing time.
+- path-based routing to services
+- request correlation ID generation/propagation (`X-Correlation-ID`)
+- centralized edge behavior
 
-### Why the Sidecar Pattern for Redis?
+### Why separate databases per service?
 
-Redis runs as a sidecar container within the same ECS Task as the Flask API, communicating over `localhost`. This eliminates network hops for cache reads, which are on the hot path for every authenticated request. The trade-off is that Redis is not independently scalable in this configuration — an acceptable constraint given the session-caching use case.
+Each service owns its own schema/database (`auth_db`, `supplier_db`, `booking_db`, `gamification_db`, `iot_db`) to preserve autonomy and reduce coupling.  
+Cross-service data joins are done via **inter-service HTTP APIs**, not foreign keys.
 
-### Why PostgreSQL (RDS) as the Unified Store?
+### Why Redis as shared infrastructure (not sidecar)?
 
-Both the API (OLTP) and the Spark jobs (OLAP writes) target the same RDS PostgreSQL instance. This avoids a separate analytics store and simplifies the data model, at the cost of some query isolation. For the current scale this is acceptable; a future evolution would introduce read replicas or a dedicated data warehouse (e.g., Redshift) for heavier analytical queries.
+Redis now runs as an independent shared service in Compose (and should be a shared infra service in production), which allows:
+
+- independent scaling and lifecycle
+- cleaner resource isolation
+- shared caching across services when needed
+
+### Why ephemeral Spark?
+
+Spark runs in dedicated containers and can be scheduled/triggered independently. This keeps analytics compute separate from API compute and avoids 24/7 cluster cost.
 
 ---
 
@@ -46,70 +58,110 @@ Both the API (OLTP) and the Spark jobs (OLAP writes) target the same RDS Postgre
 ```text
                                     +-----------------------+
                                     |    User Browser       |
-                                    |  (Frontend on Vercel) |
+                                    |  (Frontend / Vite)    |
                                     +-----------+-----------+
-                                                | HTTPS
+                                                |
                                                 v
                                     +-----------------------+
-                                    | AWS App Load Balancer |
-                                    +-----------+-----------+
+                                    |   Nginx API Gateway   |
+                                    |      (Port 5001)      |
+                                    +--+----+----+----+-----+
+                                       |    |    |    | 
+                                       |    |    |    +-------------------+
+                                       |    |    +------> iot_analytics   |
+                                       |    +-----------> gamification     |
+                                       +---------------> booking           |
+                                                      +-> supplier         |
+                                                      +-> auth             |
+
+     +------------------+      +-------------------+      +------------------------+
+     |  Redis (shared)  |<---->| Flask services    |<---->| PostgreSQL (5 DBs)     |
+     +------------------+      +-------------------+      +------------------------+
+                                                ^
                                                 |
-+-------------------+               +-----------v-----------+               +-------------------+
-|  Stripe API       | <---HTTPS---> |    Flask Backend      | <-----------> |  Redis (Sidecar)  |
-| (Payment Gateway) |               |  (AWS ECS Fargate)    |               |  localhost:6379   |
-+-------------------+               +-----------+-----------+               +-------------------+
+                                   +------------+------------+
+                                   | Spark Master + Worker   |
+                                   | Reads parquet, writes DB|
+                                   +------------+------------+
                                                 |
-                                                v
-+-------------------+               +-----------------------+               +-------------------+
-| IoT Sensor Data   |               |   Amazon RDS          |               | Prometheus &      |
-| (S3 / Data Store) | <-----------> |   (PostgreSQL)        | <-----------> | Grafana           |
-+---------+---------+               +-----------+-----------+               | (Monitoring)      |
-          |                                     ^                           +-------------------+
-          |                                     |
-          |                 +-------------------v-------------------+
-          +---------------> |   Apache Spark Analytics Job          |
-                            |   ECS Task — triggered by EventBridge |
-                            |   3x daily schedule (ephemeral)       |
-                            +---------------------------------------+
+                                      +---------+---------+
+                                      | data/raw parquet  |
+                                      +-------------------+
+
+              +---------------------+              +--------------------+
+              | Prometheus (+redis) | <----------  | Flask /metrics     |
+              +----------+----------+              +--------------------+
+                         |
+                         v
+                    +----+----+
+                    | Grafana |
+                    +---------+
 ```
 
-**Data flow summary:**
+---
 
-1. IoT sensors write raw consumption records to S3
-2. EventBridge triggers the Spark ECS Task on schedule
-3. Spark reads from S3, aggregates by unit/society/time window, detects anomalies
-4. Aggregated results are written back to RDS PostgreSQL
-5. The Flask API serves pre-aggregated data to the frontend with sub-millisecond Redis cache hits on hot queries
+## Microservices & Route Mapping
+
+1. **Auth Service** (`/auth/*`)
+   - `GET /`
+   - `GET /ping`
+   - `POST /register`
+   - `POST /login`
+   - `GET|PUT /profile`
+
+2. **Supplier Service** (`/supplier/*`)
+   - `GET /suppliers`
+   - `POST /tankers`
+   - `GET /tankers/owner`
+   - `PUT /tankers/<id>`
+   - `DELETE /tankers/<id>`
+   - `PATCH /tankers/<id>/status`
+   - `GET /owner/dashboard`
+   - `GET /owner/earnings`
+
+3. **Booking Service** (`/bookings/*`)
+   - `POST /book_tanker`
+   - `GET /track_order/<id>`
+   - `PUT /update_order/<id>`
+   - `POST /bookings`
+   - `GET /bookings/owner`
+   - `PATCH /bookings/<id>/status`
+   - `POST /society_bulk_order`
+   - `POST /create-payment-intent`
+
+4. **IoT Analytics Service** (`/analytics/*`)
+   - `POST /log_reading`
+   - `GET /consumption_report`
+   - `GET /society_dashboard`
+   - `GET /conservation_summary`
+
+5. **Gamification Service** (`/gamification/*`)
+   - `GET /conservation_tips`
+   - `GET /challenges`
+   - `POST /start_challenge/<id>`
+   - `GET /user_challenges`
+   - `PUT /update_challenge_progress/<id>`
+   - `GET|POST /community/broadcasts`
+   - `GET|POST /community/threads`
+   - `GET|POST /community/threads/<id>/comments`
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Rationale |
-|---|---|---|
-| Frontend | React / Next.js / TypeScript on Vercel | SSR support, zero-config CDN deployment |
-| API | Python / Flask on ECS Fargate | Lightweight, fits team familiarity, horizontally scalable |
-| Auth | JWT (JSON Web Tokens) | Stateless — scales horizontally without session affinity |
-| Payments | Stripe API | Handles fractional currency, PCI compliance out of the box |
-| Cache | Redis (sidecar) | Sub-millisecond session and query caching on the hot path |
-| Primary DB | Amazon RDS PostgreSQL | ACID compliance, strong ORM support via SQLAlchemy |
-| Batch Processing | Apache Spark (PySpark) | Distributed processing for large IoT datasets |
-| Containerization | Docker & Docker Compose | Environment parity between local dev and cloud |
-| IaC | Terraform | Reproducible, version-controlled AWS infrastructure |
-| CI/CD | Jenkins + SonarQube + Pytest | Automated test, quality gate, and security scan pipeline |
-| Monitoring | Prometheus + Grafana | Real-time metrics and alerting on API and infrastructure |
-
----
-
-## Architectural Patterns Applied
-
-**Sidecar Pattern** — Redis is co-located with the Flask API in the same ECS Task, communicating over `localhost`. This eliminates inter-container network latency on the session and cache hot path.
-
-**Decoupled Compute** — The API and the analytics pipeline are fully independent ECS Tasks. A Spark job failure does not affect API availability, and neither workload can starve the other of CPU or memory.
-
-**Ephemeral Batch Processing** — Spark compute is provisioned only when needed. EventBridge triggers the ECS Task on a cron schedule; the container exits after completion. Infrastructure costs remain proportional to actual workload.
-
-**Application Load Balancer as Edge** — All public traffic enters through an ALB, enabling health-check-based routing, SSL termination, and a single ingress point for future horizontal scaling of the Flask service.
+| Layer | Technology |
+|---|---|
+| Frontend | React + TypeScript + Vite |
+| API | Flask microservices |
+| Gateway | Nginx |
+| Auth | JWT |
+| Payments | Stripe |
+| Cache | Redis |
+| DB | PostgreSQL 13 (logical split DBs) |
+| Analytics | Apache Spark (PySpark) |
+| Monitoring | Prometheus + Grafana |
+| CI/CD | Jenkins + SonarQube + Pytest |
+| Containerization | Docker + Docker Compose |
 
 ---
 
@@ -117,38 +169,31 @@ Both the API (OLTP) and the Spark jobs (OLAP writes) target the same RDS Postgre
 
 ```bash
 .
-├── README.md                      # Project documentation
-├── docker-compose.yml             # Local dev environment orchestration
-├── docker-compose.cicd.yml        # CI/CD-specific orchestration
-├── prometheus.yml                 # Prometheus scrape configuration
-├── .gitignore
-│
-├── analytics/                     # Spark batch processing layer
+├── README.md
+├── docker-compose.yml
+├── docker-compose.cicd.yml
+├── prometheus.yml
+├── analytics/
 │   ├── Dockerfile
-│   ├── process_data.py            # PySpark: ingest S3, aggregate, write to RDS
-│   ├── requirements.txt
-│   └── data/                      # Local volume mount for IoT data
-│
-├── backend/                       # Flask API layer
-│   ├── app.py                     # Application entrypoint
-│   ├── auth.py                    # JWT authentication logic
-│   ├── routes.py                  # Endpoints: tankers, bulk orders, challenges
-│   ├── models.py                  # SQLAlchemy ORM schemas
-│   ├── config.py                  # Environment configuration
-│   ├── utils.py                   # Shared helpers
-│   ├── populate_db.py             # Seed script: users, societies, suppliers, challenges
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── Jenkinsfile                # CI/CD pipeline definition
-│   ├── sonar-project.properties   # SonarQube configuration
+│   ├── process_data.py
+│   └── requirements.txt
+├── backend/
+│   ├── api_gateway/nginx.conf
+│   ├── auth_service/
+│   ├── supplier_service/
+│   ├── booking_service/
+│   ├── gamification_service/
+│   ├── iot_analytics_service/
+│   ├── db_init/01-create-databases.sql
+│   ├── populate_db.py
+│   ├── Jenkinsfile
+│   ├── sonar-project.properties
 │   └── tests/
-│       ├── conftest.py            # Pytest fixtures
-│       └── test_business_logic.py # Unit tests: API, Stripe, state machines
-│
-├── frontend/                      # React / Next.js web client
-├── data/                          # Shared volume: DB and analytics
+├── grafana/
+│   ├── dashboards/
+│   └── provisioning/
+├── data/
 └── spark_libs/
-    └── postgresql-42.7.8.jar      # JDBC driver for Spark → RDS writes
 ```
 
 ---
@@ -157,145 +202,213 @@ Both the API (OLTP) and the Spark jobs (OLAP writes) target the same RDS Postgre
 
 ### Prerequisites
 
-- **Docker & Docker Compose** (daemon must be running)
-- **Python 3.10+**
-- **Git**
+- Docker + Docker Compose
+- Python 3.11+
+- Node.js 18+
+- PowerShell 7+
 
 ---
 
 ### Step 1: Clone & Configure
 
-```bash
+```powershell
 git clone <your-repo-url>
 cd <your-repo-folder>
 ```
 
-Create `backend/.env`:
+Create/Update `backend/.env`:
 
 ```env
-FLASK_ENV=development
-FLASK_DEBUG=1
-DATABASE_URL=postgresql://user:password@db:5432/waterdb
-REDIS_URL=redis://redis:6379/0
-JWT_SECRET_KEY=super-secret-key-change-this-in-prod-make-it-32-chars
+SECRET_KEY=change-me
+JWT_SECRET_KEY=change-me-at-least-32-chars
 STRIPE_SECRET_KEY=sk_test_your_stripe_test_key
+INTERNAL_SERVICE_TOKEN=internal-dev-token
+```
+
+Create/Update `frontend/.env`:
+
+```env
+VITE_API_BASE_URL=http://localhost:5001
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_key
 ```
 
 ---
 
-### Step 2: Start All Services
+### Step 2: Start all backend services
 
-```bash
-docker-compose up -d --build
+If you have old monolith data, run a full reset once:
+
+```powershell
+docker compose down -v
 ```
 
-> Drop `-d` or run `docker-compose logs -f` to tail live logs.
+Then start:
 
-```bash
-docker ps   # verify all containers are healthy
+```powershell
+docker compose up -d --build
+docker ps
 ```
-
-This starts: PostgreSQL, Redis, Flask API, Spark Master + Worker, Prometheus, Grafana.
 
 ---
 
-### Step 3: Seed the Database
+### Step 3: Seed the databases (**inside Docker**)
 
-```bash
-docker exec -it water_mgmt_backend python populate_db.py
+The old command is no longer valid because `water_mgmt_backend` (monolith container) does not exist anymore.
+
+Use:
+
+```powershell
+docker compose --profile tools run --rm db_seeder
 ```
 
-Creates tables and populates initial data: users, societies, tanker suppliers, and eco-challenges.
+This runs `backend/populate_db.py` inside a dedicated seeder container and populates:
+
+- `auth_db`
+- `supplier_db`
+- `booking_db`
+- `gamification_db`
+- `iot_db`
 
 ---
 
-### Step 4: Trigger a Spark Analytics Run
+### Step 4: Trigger Spark analytics run (**inside Docker**)
 
-```bash
-docker exec -it spark_master /opt/spark/bin/spark-submit \
-  --master spark://spark-master:7077 \
-  --jars /opt/spark/jars_external/postgresql-42.7.8.jar \
+Use:
+
+```powershell
+docker exec -it spark_master /opt/spark/bin/spark-submit `
+  --master spark://spark-master:7077 `
+  --jars /opt/spark/jars_external/postgresql-42.7.8.jar `
   /opt/analytics/process_data.py
 ```
 
-Simulates the EventBridge-triggered batch job. Reads from `analytics/data/`, aggregates IoT metrics, and writes results to PostgreSQL.
+This reads parquet under `/opt/analytics/data/raw/water_readings` and writes aggregated outputs to `iot_db`.
 
 ---
 
-### Step 5: Access Services
+### Step 5: Start frontend
 
-| Service | URL | Credentials |
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+---
+
+### Step 6: Access services
+
+| Service | URL | Notes |
 |---|---|---|
-| Flask API | `http://localhost:5001` | — |
-| Prometheus | `http://localhost:9090` | — |
-| Grafana | `http://localhost:3000` | `admin` / `admin` |
-| Spark UI | `http://localhost:8080` | — |
-
-To connect Grafana to Prometheus: add a data source pointed at `http://prometheus:9090`.
-
----
-
-### Step 6: Run Tests & Quality Checks Locally
-
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate       # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-pip install pytest pytest-flask pytest-cov flake8 bandit
-```
-
-```bash
-pytest tests/ -v --cov=. --cov-report=xml   # generates coverage.xml for SonarQube
-flake8 .                                     # style and lint
-bandit -r .                                  # security scan
-```
+| API Gateway | `http://localhost:5001` | all backend APIs |
+| Prometheus | `http://localhost:9090` | metrics |
+| Grafana | `http://localhost:3000` | `admin/admin` |
+| Spark UI | `http://localhost:8080` | master UI |
+| Jenkins | `http://localhost:8081` | from cicd compose |
+| SonarQube | `http://localhost:9000` | from cicd compose |
 
 ---
 
-### Step 7: CI/CD Pipeline (Jenkins + SonarQube)
+### Step 7: Grafana quick guide (smart/default path)
 
-This project includes a fully containerized local CI/CD environment. On push, Jenkins uses the `Jenkinsfile` to spin up isolated test containers, run the Pytest suite, generate a `coverage.xml` report, and submit it to SonarQube for quality gate evaluation using `sonar-project.properties`.
+Grafana is pre-provisioned from files under `grafana/provisioning` and `grafana/dashboards`:
 
-To run and manage the local CI/CD stack:
+- datasource: Prometheus (`http://prometheus:9090`)
+- default dashboard: **Water Platform - Microservices Overview**
 
-**1. Spin up the CI/CD Environment**
-Start Jenkins and SonarQube in the background using the dedicated CI/CD compose file:
-```bash
-docker-compose -f docker-compose.cicd.yml up -d
+So you do **not** need to manually create datasources/panels each time.
+
+If you want custom panels, these PromQL queries are good defaults:
+
+```promql
+sum by (job) (rate(flask_http_request_total[5m]))
+histogram_quantile(0.95, sum by (le, job) (rate(flask_http_request_duration_seconds_bucket[5m])))
+sum by (job) (rate(flask_http_request_exceptions_total[5m]))
+sum(increase(flask_http_request_total[1h]))
+redis_memory_used_bytes
+redis_connected_clients
+rate(redis_commands_processed_total[5m])
 ```
 
-**2. Unlock Jenkins**
-On the very first run, Jenkins will be locked. Fetch the initial admin password directly from the container:
-```bash
+---
+
+### Step 8: Tests and quality checks
+
+Backend:
+
+```powershell
+python -m pip install pytest
+python -m pytest backend\tests -q
+python -m compileall backend\auth_service backend\supplier_service backend\booking_service backend\gamification_service backend\iot_analytics_service
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npx tsc -p tsconfig.app.json --noEmit
+npm run build
+```
+
+---
+
+## CI/CD Pipeline (Jenkins + SonarQube)
+
+Yes, the CI/CD flow remains conceptually the same, but the pipeline is updated for microservices:
+
+- installs dependencies per backend service
+- compiles all 5 service packages
+- runs `backend/tests`
+- publishes `coverage.xml` to SonarQube
+
+### 1) Start CI/CD stack
+
+```powershell
+docker compose -f docker-compose.cicd.yml up -d
+```
+
+### 2) Unlock Jenkins (first run only)
+
+```powershell
 docker exec -it water_cicd_jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
-**3. Access the Dashboards**
-Once the services are healthy, you can access the UI for both tools:
-```bash
-    Jenkins: http://localhost:8080 (Use the password fetched above to complete setup).
-    SonarQube: http://localhost:9000 (Default login is usually admin / admin).
-```
+### 3) Open dashboards
+
+- Jenkins: `http://localhost:8081`
+- SonarQube: `http://localhost:9000` (default usually `admin/admin`)
+
+### 4) Jenkins job setup
+
+1. Create a Pipeline job pointing to this repository.
+2. Use repository `backend/Jenkinsfile`.
+3. Configure SonarQube server in Jenkins as `SonarQube`.
+4. Ensure `SonarQubeScanner` tool is installed in Jenkins global tools.
+
 ---
 
-### Teardown
+## Teardown
 
-```bash
-docker-compose down        # stop and remove containers
-docker-compose down -v     # also wipe volumes (full reset)
-docker-compose -f docker-compose.cicd.yml down -v # shut down the CI/CD environment
+```powershell
+docker compose down
+docker compose down -v
+docker compose -f docker-compose.cicd.yml down -v
 ```
 
-### To test use
+---
+
+## Seeded test credentials
+
 **User**
-```bash
+
+```text
 john_1
 pass123
 ```
 
 **Tanker owner**
-```bash
+
+```text
 owner_raj
 owner123
 ```
