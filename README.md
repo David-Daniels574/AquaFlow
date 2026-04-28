@@ -259,6 +259,10 @@ Use:
 
 ```powershell
 docker compose --profile tools run --rm db_seeder
+Use this once after code changes to ensure the seeder image is refreshed:
+docker compose --profile tools run --rm --build db_seeder
+Then normal reruns:
+docker compose --profile tools run --rm db_seeder
 ```
 
 This runs `backend/populate_db.py` inside a dedicated seeder container and populates:

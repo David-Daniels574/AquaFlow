@@ -14,9 +14,13 @@ if not all([jdbc_url, db_user, db_pass]):
     print("ERROR: Missing DB credentials.")
     sys.exit(1)
 
-spark = SparkSession.builder \
-    .appName("WaterConsumptionBatchJob") \
+spark = (
+    SparkSession.builder
+    .appName("WaterConsumptionBatchJob")
+    # Backward compatibility for parquet files written with TIMESTAMP(NANOS)
+    .config("spark.sql.legacy.parquet.nanosAsLong", "true")
     .getOrCreate()
+)
 
 db_props = {"user": db_user, "password": db_pass, "driver": "org.postgresql.Driver"}
 

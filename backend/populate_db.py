@@ -4,6 +4,8 @@ import shutil
 from datetime import datetime, timedelta
 
 import pandas as pd
+import redis
+from sqlalchemy import text
 
 from auth_service.app import app as auth_app
 from auth_service.models import Society, User, db as auth_db
@@ -25,6 +27,36 @@ from supplier_service.app import app as supplier_app
 from supplier_service.models import Supplier, SupplierOffer, TankerListing, db as supplier_db
 
 
+SEED_RANDOM_VALUE = 42
+
+
+def reset_service_database(app, service_db, service_name):
+    with app.app_context():
+        print(f"Resetting {service_name} database...")
+        service_db.session.remove()
+        service_db.engine.dispose()
+
+        db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+        if db_uri.startswith("postgresql://"):
+            with service_db.engine.begin() as conn:
+                conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+                conn.execute(text("CREATE SCHEMA public"))
+                conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+
+        service_db.drop_all()
+        service_db.create_all()
+
+
+def clear_redis_cache():
+    redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+    try:
+        redis_client = redis.Redis.from_url(redis_url)
+        redis_client.flushdb()
+        print(f"Cleared Redis cache at {redis_url}")
+    except redis.RedisError as exc:
+        print(f"Warning: failed to clear Redis cache at {redis_url}: {exc}")
+
+
 def get_random_coordinates(base_lat, base_long, radius=0.01):
     return base_lat + random.uniform(-radius, radius), base_long + random.uniform(-radius, radius)
 
@@ -32,8 +64,6 @@ def get_random_coordinates(base_lat, base_long, radius=0.01):
 def seed_auth_service():
     with auth_app.app_context():
         print("Seeding auth_service...")
-        auth_db.drop_all()
-        auth_db.create_all()
 
         society = Society(name="Green Valley", address="123 Main St, Mumbai")
         auth_db.session.add(society)
@@ -123,8 +153,6 @@ def seed_auth_service():
 def seed_supplier_service(owner_id):
     with supplier_app.app_context():
         print("Seeding supplier_service...")
-        supplier_db.drop_all()
-        supplier_db.create_all()
 
         suppliers = [
             Supplier(
@@ -162,6 +190,66 @@ def seed_supplier_service(owner_id):
                 num_reviews=40,
                 lat=19.05,
                 long=72.84,
+            ),
+            Supplier(
+                name="BlueDrop Logistics",
+                contact="+91-9988776655",
+                verified=True,
+                photo_url="https://images.unsplash.com/photo-1520607162513-77705c0f0d4a",
+                area="Powai",
+                city="Mumbai",
+                rating=4.4,
+                num_reviews=31,
+                lat=19.119,
+                long=72.905,
+            ),
+            Supplier(
+                name="HydroFast Deliveries",
+                contact="+91-9123456780",
+                verified=True,
+                photo_url="https://images.unsplash.com/photo-1494412651409-8963ce7935a7",
+                area="Goregaon",
+                city="Mumbai",
+                rating=4.2,
+                num_reviews=18,
+                lat=19.164,
+                long=72.849,
+            ),
+            Supplier(
+                name="SafeWater Fleet",
+                contact="+91-9234567812",
+                verified=True,
+                photo_url="https://images.unsplash.com/photo-1469474968028-56623f02e42e",
+                area="Chembur",
+                city="Mumbai",
+                rating=4.5,
+                num_reviews=27,
+                lat=19.052,
+                long=72.893,
+            ),
+            Supplier(
+                name="Metro Aqua Supply",
+                contact="+91-9345678123",
+                verified=True,
+                photo_url="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+                area="Dadar",
+                city="Mumbai",
+                rating=4.3,
+                num_reviews=22,
+                lat=19.018,
+                long=72.842,
+            ),
+            Supplier(
+                name="CityTank WaterWorks",
+                contact="+91-9456781234",
+                verified=True,
+                photo_url="https://images.unsplash.com/photo-1450101499163-c8848c66ca85",
+                area="Kurla",
+                city="Mumbai",
+                rating=4.1,
+                num_reviews=15,
+                lat=19.072,
+                long=72.882,
             ),
         ]
         supplier_db.session.add_all(suppliers)
@@ -211,17 +299,106 @@ def seed_supplier_service(owner_id):
                 lat=19.061,
                 long=72.834,
             ),
+            TankerListing(
+                owner_id=owner_id,
+                vehicle_number="MH-01-EF-9921",
+                tanker_type="Standard",
+                capacity=3000.0,
+                price_per_liter=0.40,
+                base_delivery_fee=220.0,
+                service_areas='["Powai", "Vikhroli", "Ghatkopar"]',
+                images='["https://images.unsplash.com/photo-1473448912268-2022ce9509d8"]',
+                amenities='["Fast Dispatch", "Digital Invoicing"]',
+                description="Compact tanker for quick urban deliveries.",
+                emergency_contact="+91-9000033333",
+                status="available",
+                area="Powai",
+                city="Mumbai",
+                lat=19.118,
+                long=72.907,
+            ),
+            TankerListing(
+                owner_id=owner_id,
+                vehicle_number="MH-01-GH-2201",
+                tanker_type="Industrial",
+                capacity=12000.0,
+                price_per_liter=0.66,
+                base_delivery_fee=520.0,
+                service_areas='["Chembur", "Kurla", "Sion"]',
+                images='["https://images.unsplash.com/photo-1465447142348-e9952c393450"]',
+                amenities='["GPS Tracking", "High Pressure Pump"]',
+                description="Industrial-grade tanker for high-capacity demand.",
+                emergency_contact="+91-9000044444",
+                status="available",
+                area="Chembur",
+                city="Mumbai",
+                lat=19.051,
+                long=72.892,
+            ),
+            TankerListing(
+                owner_id=owner_id,
+                vehicle_number="MH-01-IJ-7754",
+                tanker_type="Premium",
+                capacity=8000.0,
+                price_per_liter=0.58,
+                base_delivery_fee=390.0,
+                service_areas='["Dadar", "Matunga", "Mahim"]',
+                images='["https://images.unsplash.com/photo-1451187580459-43490279c0fa"]',
+                amenities='["24x7 Support", "Certified Driver"]',
+                description="Premium tanker suited for frequent society orders.",
+                emergency_contact="+91-9000055555",
+                status="busy",
+                area="Dadar",
+                city="Mumbai",
+                lat=19.019,
+                long=72.841,
+            ),
+            TankerListing(
+                owner_id=owner_id,
+                vehicle_number="MH-01-KL-1189",
+                tanker_type="Standard",
+                capacity=6000.0,
+                price_per_liter=0.49,
+                base_delivery_fee=310.0,
+                service_areas='["Andheri", "Goregaon", "Jogeshwari"]',
+                images='["https://images.unsplash.com/photo-1509395176047-4a66953fd231"]',
+                amenities='["Water Quality Certificate"]',
+                description="Balanced option for daily apartment deliveries.",
+                emergency_contact="+91-9000066666",
+                status="available",
+                area="Goregaon",
+                city="Mumbai",
+                lat=19.163,
+                long=72.848,
+            ),
+            TankerListing(
+                owner_id=owner_id,
+                vehicle_number="MH-01-MN-4502",
+                tanker_type="Standard",
+                capacity=4500.0,
+                price_per_liter=0.43,
+                base_delivery_fee=250.0,
+                service_areas='["Bandra", "Santacruz", "Khar"]',
+                images='["https://images.unsplash.com/photo-1520607162513-77705c0f0d4a"]',
+                amenities='["GPS Tracking"]',
+                description="Mid-size tanker for west-line rapid drops.",
+                emergency_contact="+91-9000077777",
+                status="available",
+                area="Bandra",
+                city="Mumbai",
+                lat=19.060,
+                long=72.833,
+            ),
         ]
         supplier_db.session.add_all(tankers)
         supplier_db.session.commit()
+        print(f"Seeded {len(suppliers)} suppliers, {len(offers)} offers, {len(tankers)} tankers")
         return {"supplier_ids": [supplier.id for supplier in suppliers], "tanker_ids": [tanker.id for tanker in tankers]}
 
 
 def seed_booking_service(seed_data, supplier_ids, tanker_ids):
     with booking_app.app_context():
         print("Seeding booking_service...")
-        booking_db.drop_all()
-        booking_db.create_all()
 
         orders = []
         now = datetime.utcnow()
@@ -268,8 +445,6 @@ def seed_booking_service(seed_data, supplier_ids, tanker_ids):
 def seed_gamification_service(seed_data):
     with gamification_app.app_context():
         print("Seeding gamification_service...")
-        gamification_db.drop_all()
-        gamification_db.create_all()
 
         tips = [
             ConservationTip(title="RO Waste Reuse", content="Collect RO purifier waste water to mop floors.", location_specific="urban_india"),
@@ -335,8 +510,6 @@ def seed_gamification_service(seed_data):
 def seed_iot_service(seed_data):
     with iot_app.app_context():
         print("Seeding iot_analytics_service...")
-        iot_db.drop_all()
-        iot_db.create_all()
 
         now = datetime.utcnow()
         readings = []
@@ -391,7 +564,9 @@ def seed_iot_service(seed_data):
         os.makedirs(data_root, exist_ok=True)
 
         df = pd.DataFrame(parquet_records)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        # Spark 3.5 cannot parse TIMESTAMP(NANOS,false) written by default in some pyarrow paths.
+        # Force microsecond precision for parquet compatibility.
+        df["timestamp"] = pd.to_datetime(df["timestamp"]).astype("datetime64[us]")
         for date_key, group in df.groupby("date"):
             partition_dir = os.path.join(data_root, f"date={date_key}")
             os.makedirs(partition_dir, exist_ok=True)
@@ -399,10 +574,22 @@ def seed_iot_service(seed_data):
                 os.path.join(partition_dir, "data.parquet"),
                 engine="pyarrow",
                 index=False,
+                coerce_timestamps="us",
+                allow_truncated_timestamps=True,
+                use_deprecated_int96_timestamps=True,
             )
 
 
 if __name__ == "__main__":
+    random.seed(SEED_RANDOM_VALUE)
+    clear_redis_cache()
+
+    reset_service_database(auth_app, auth_db, "auth_service")
+    reset_service_database(supplier_app, supplier_db, "supplier_service")
+    reset_service_database(booking_app, booking_db, "booking_service")
+    reset_service_database(gamification_app, gamification_db, "gamification_service")
+    reset_service_database(iot_app, iot_db, "iot_analytics_service")
+
     seed_info = seed_auth_service()
     supplier_seed = seed_supplier_service(seed_info["owner_id"])
     seed_booking_service(seed_info, supplier_seed["supplier_ids"], supplier_seed["tanker_ids"])
