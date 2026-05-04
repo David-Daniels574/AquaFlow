@@ -288,8 +288,8 @@ resource "aws_ecs_task_definition" "db_seeder" {
   family                   = "${local.name_prefix}-db-seeder"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.microservice_cpu)
-  memory                   = tostring(var.microservice_memory)
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 

@@ -2,9 +2,12 @@ import os
 import random
 import shutil
 from datetime import datetime, timedelta
+from urllib.parse import unquote, urlparse
 
 import pandas as pd
+import psycopg2
 import redis
+from psycopg2 import sql
 from sqlalchemy import text
 
 from auth_service.app import app as auth_app
@@ -28,6 +31,77 @@ from supplier_service.models import Supplier, SupplierOffer, TankerListing, db a
 
 
 SEED_RANDOM_VALUE = 42
+
+
+def _parse_postgres_url(db_url):
+    parsed = urlparse(db_url)
+    return {
+        "host": parsed.hostname,
+        "port": parsed.port or 5432,
+        "user": unquote(parsed.username or ""),
+        "password": unquote(parsed.password or ""),
+        "dbname": (parsed.path or "/").lstrip("/"),
+    }
+
+
+def ensure_service_databases():
+    db_env_vars = [
+        "AUTH_DATABASE_URL",
+        "SUPPLIER_DATABASE_URL",
+        "BOOKING_DATABASE_URL",
+        "GAMIFICATION_DATABASE_URL",
+        "IOT_DATABASE_URL",
+    ]
+
+    db_urls = []
+    for env_var in db_env_vars:
+        db_url = os.environ.get(env_var, "").strip()
+        if db_url.startswith("postgresql://"):
+            db_urls.append((env_var, db_url))
+
+    if not db_urls:
+        print("No PostgreSQL service URLs found. Skipping DB existence check.")
+        return
+
+    parsed_urls = [(env_var, _parse_postgres_url(db_url)) for env_var, db_url in db_urls]
+    first = parsed_urls[0][1]
+    admin_candidates = []
+    for candidate in ("postgres", "appdb", first["dbname"]):
+        if candidate and candidate not in admin_candidates:
+            admin_candidates.append(candidate)
+
+    admin_conn = None
+    for admin_db in admin_candidates:
+        try:
+            admin_conn = psycopg2.connect(
+                host=first["host"],
+                port=first["port"],
+                user=first["user"],
+                password=first["password"],
+                dbname=admin_db,
+            )
+            print(f"Connected to admin database '{admin_db}' to verify service databases.")
+            break
+        except psycopg2.OperationalError as exc:
+            print(f"Failed to connect to admin database '{admin_db}': {exc}")
+
+    if not admin_conn:
+        raise RuntimeError("Could not connect to PostgreSQL admin database to verify service DBs.")
+
+    try:
+        admin_conn.autocommit = True
+        with admin_conn.cursor() as cur:
+            for env_var, parsed in parsed_urls:
+                db_name = parsed["dbname"]
+                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
+                if cur.fetchone():
+                    print(f"Database '{db_name}' already exists ({env_var}).")
+                    continue
+
+                cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
+                print(f"Created missing database '{db_name}' ({env_var}).")
+    finally:
+        admin_conn.close()
 
 
 def reset_service_database(app, service_db, service_name):
@@ -582,6 +656,7 @@ def seed_iot_service(seed_data):
 
 if __name__ == "__main__":
     random.seed(SEED_RANDOM_VALUE)
+    ensure_service_databases()
     clear_redis_cache()
 
     reset_service_database(auth_app, auth_db, "auth_service")

@@ -233,6 +233,8 @@ pipeline {
                   local task_def="$2"
                   local task_arn
                   local exit_code
+                  local log_group
+                  local log_stream
 
                   task_arn="$(aws ecs run-task \
                     --cluster "$CLUSTER_NAME" \
@@ -254,6 +256,28 @@ pipeline {
                   if [ "$exit_code" != "0" ]; then
                     echo "$label failed with exit code $exit_code"
                     aws ecs describe-tasks --cluster "$CLUSTER_NAME" --tasks "$task_arn" --output table
+
+                    log_group="$(aws ecs describe-task-definition \
+                      --task-definition "$task_def" \
+                      --query 'taskDefinition.containerDefinitions[0].logConfiguration.options."awslogs-group"' \
+                      --output text)"
+
+                    log_stream="$(aws ecs describe-tasks \
+                      --cluster "$CLUSTER_NAME" \
+                      --tasks "$task_arn" \
+                      --query 'tasks[0].containers[0].logStreamName' \
+                      --output text)"
+
+                    if [ "$log_group" != "None" ] && [ "$log_stream" != "None" ]; then
+                      echo "---- $label CloudWatch logs ($log_group / $log_stream) ----"
+                      aws logs get-log-events \
+                        --log-group-name "$log_group" \
+                        --log-stream-name "$log_stream" \
+                        --limit 200 \
+                        --query 'events[].message' \
+                        --output text | tr '\\t' '\\n' || true
+                      echo "---- end logs ----"
+                    fi
                     exit 1
                   fi
 
