@@ -119,15 +119,12 @@ pipeline {
             }
             steps {
                 script {
-                    // 1. Fail fast if no registry is provided
                     if (!env.ECR_REGISTRY) {
                         error("ECR_REGISTRY is required when BUILD_AND_PUSH_IMAGES=true")
                     }
 
-                    // 2. Log in to AWS ECR once before starting parallel jobs
                     sh 'aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"'
 
-                    // 3. Define all your images and their folder paths
                     def images = [
                         'frontend': './frontend',
                         'api_gateway': './backend/api_gateway',
@@ -140,20 +137,23 @@ pipeline {
                         'spark_job': './analytics'
                     ]
 
-                    // 4. Create a map of tasks to run in parallel
                     def parallelBuilds = [:]
 
                     images.each { imageName, buildPath ->
                         parallelBuilds[imageName] = {
-                            // Build and push immediately for each image
-                            sh """
-                            docker build -t ${ECR_REGISTRY}/${imageName}:latest ${buildPath}
-                            docker push ${ECR_REGISTRY}/${imageName}:latest
-                            """
+                            // 1. Create repo if it doesn't exist
+                            sh "aws ecr describe-repositories --repository-names ${imageName} --region \$AWS_REGION || aws ecr create-repository --repository-name ${imageName} --region \$AWS_REGION"
+                            
+                            // 2. Build
+                            sh "docker build -t ${ECR_REGISTRY}/${imageName}:latest ${buildPath}"
+                            
+                            // 3. Push (with network retry)
+                            retry(3) {
+                                sh "docker push ${ECR_REGISTRY}/${imageName}:latest"
+                            }
                         }
                     }
 
-                    // 5. Execute all 9 tasks at the same time
                     parallel parallelBuilds
                 }
             }
@@ -179,6 +179,33 @@ pipeline {
                 '''
             }
         }
+        stage('Clean Up ECR Repositories') {
+            when {
+                allOf {
+                    expression { return params.DEPLOY_INFRA }
+                    expression { return params.TF_ACTION == 'destroy' }
+                }
+            }
+            steps {
+                script {
+                    def imageNames = [
+                        'frontend', 'api_gateway', 'db_seeder', 'auth_service', 
+                        'supplier_service', 'booking_service', 'gamification_service', 
+                        'iot_analytics_service', 'spark_job'
+                    ]
+                    
+                    imageNames.each { repo ->
+                        // The --force flag ensures it deletes the repo even if it contains images
+                        // The || true ensures the pipeline doesn't crash if the repo was already deleted
+                        sh """
+                        echo "Destroying ECR Repository: ${repo}..."
+                        aws ecr delete-repository --repository-name ${repo} --region \$AWS_REGION --force || true
+                        """
+                    }
+                }
+            }
+        }
+
 
         stage('Post Deploy: Seed DB and Run Spark Once') {
             when {
