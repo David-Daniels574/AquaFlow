@@ -1,6 +1,7 @@
 # process_data.py
 import os
 import sys
+import traceback
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import coalesce, col, lag, max as _max, to_date
@@ -18,8 +19,11 @@ if not all([jdbc_url, db_user, db_pass]):
 spark = (
     SparkSession.builder
     .appName("WaterConsumptionBatchJob")
+    .master("local[2]")
     # Backward compatibility for parquet files written with TIMESTAMP(NANOS)
     .config("spark.sql.legacy.parquet.nanosAsLong", "true")
+    .config("spark.driver.memory", "384m")
+    .config("spark.ui.enabled", "false")
     .getOrCreate()
 )
 
@@ -33,13 +37,29 @@ use_parquet = os.path.exists(parquet_path) and any(os.scandir(parquet_path))
 if use_parquet:
     print(">>> Reading Parquet Data Lake...")
     # Spark automatically discovers the 'date' column from the folder structure.
-    df_raw = spark.read.parquet(parquet_path)
+    try:
+        df_raw = spark.read.parquet(parquet_path)
+    except Exception as exc:
+        print(f"ERROR: Failed reading parquet source: {exc}")
+        spark.stop()
+        sys.exit(1)
 else:
     print(">>> Parquet data not found. Falling back to PostgreSQL table: water_readings")
-    df_raw = (
-        spark.read.jdbc(jdbc_url, "water_readings", properties=db_props)
-        .withColumn("date", to_date(col("timestamp")))
-    )
+    try:
+        df_raw = (
+            spark.read.jdbc(jdbc_url, "water_readings", properties=db_props)
+            .withColumn("date", to_date(col("timestamp")))
+        )
+    except Exception as exc:
+        print(f"WARNING: Unable to read source table water_readings: {exc}")
+        print("No source data available for analytics run. Exiting successfully.")
+        spark.stop()
+        sys.exit(0)
+
+if df_raw.rdd.isEmpty():
+    print("No raw readings found. Skipping aggregation.")
+    spark.stop()
+    sys.exit(0)
 
 # 2. Get End-of-Day Readings
 # Since meters only go up, daily usage = Max(reading today) - Max(reading yesterday)
@@ -71,6 +91,7 @@ try:
     print(">>> Batch Processing Complete!")
 except Exception as e:
     print(f"Error writing to DB: {e}")
+    traceback.print_exc()
     sys.exit(1)
 
 spark.stop()

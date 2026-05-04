@@ -232,9 +232,12 @@ pipeline {
                   local label="$1"
                   local task_def="$2"
                   local task_arn
+                  local task_id
                   local exit_code
                   local log_group
                   local log_stream
+                  local container_name
+                  local fallback_stream
 
                   task_arn="$(aws ecs run-task \
                     --cluster "$CLUSTER_NAME" \
@@ -262,11 +265,19 @@ pipeline {
                       --query 'taskDefinition.containerDefinitions[0].logConfiguration.options."awslogs-group"' \
                       --output text)"
 
+                    container_name="$(aws ecs describe-task-definition \
+                      --task-definition "$task_def" \
+                      --query 'taskDefinition.containerDefinitions[0].name' \
+                      --output text)"
+
                     log_stream="$(aws ecs describe-tasks \
                       --cluster "$CLUSTER_NAME" \
                       --tasks "$task_arn" \
                       --query 'tasks[0].containers[0].logStreamName' \
                       --output text)"
+
+                    task_id="${task_arn##*/}"
+                    fallback_stream="ecs/$container_name/$task_id"
 
                     if [ "$log_group" != "None" ] && [ "$log_stream" != "None" ]; then
                       echo "---- $label CloudWatch logs ($log_group / $log_stream) ----"
@@ -277,6 +288,15 @@ pipeline {
                         --query 'events[].message' \
                         --output text | tr '\\t' '\\n' || true
                       echo "---- end logs ----"
+                    elif [ "$log_group" != "None" ]; then
+                      echo "Primary log stream missing; trying fallback stream: $fallback_stream"
+                      aws logs get-log-events \
+                        --log-group-name "$log_group" \
+                        --log-stream-name "$fallback_stream" \
+                        --limit 200 \
+                        --query 'events[].message' \
+                        --output text | tr '\\t' '\\n' || true
+                      echo "If fallback stream has no events, inspect task stoppedReason and image command manually."
                     fi
                     exit 1
                   fi

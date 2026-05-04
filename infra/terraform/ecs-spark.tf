@@ -2,8 +2,8 @@ resource "aws_ecs_task_definition" "spark" {
   family                   = "${local.name_prefix}-spark-job"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = tostring(var.spark_cpu)
-  memory                   = tostring(var.spark_memory)
+  cpu                      = "1024"
+  memory                   = "2048"
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
