@@ -73,8 +73,8 @@ The platform additionally acts as a **marketplace layer** between water tanker o
              v                   v   v                       v
      +-------+------+   +--------+-+ +-+--------+  +--------+------+
      | Auth Service |   | Supplier | | Booking  |  | Gamification  |
-     | :5002        |   | Service  | | Service  |  | Service :5005 |
-     +-------+------+   | :5003    | | :5004    |  +--------+------+
+     | :5000        |   | Service  | | Service  |  | Service :5000 |
+     +-------+------+   | :5000    | | :5000    |  +--------+------+
              |          +----+-----+ +----+-----+           |
              |               |            |                 |
              +-------+-------+------------+-----------------+
@@ -82,7 +82,7 @@ The platform additionally acts as a **marketplace layer** between water tanker o
                      v
           +----------+-----------+
           |   IoT Analytics Svc  |
-          |       :5006          |
+          |       :5000          |
           +----------+-----------+
                      |
        +-------------+-------------+
@@ -134,31 +134,40 @@ The platform additionally acts as a **marketplace layer** between water tanker o
 
 ### Microservices & Route Mapping
 
-**1. Auth Service** (`/auth/*`) — Port 5002
-- `GET  /` `GET /ping`
+All microservices run internally on port 5000 and are accessed through the Nginx API Gateway on port 5001. Services do not expose ports directly; they communicate only within the Docker network.
+
+**1. Auth Service** (`/auth/*`)
+- `GET  /ping`
 - `POST /register` `POST /login`
 - `GET|PUT /profile`
+- `GET /internal/users/<id>` `POST /internal/users/batch`
+- `GET /internal/societies/<society_id>/users`
 
-**2. Supplier Service** (`/supplier/*`) — Port 5003
+**2. Supplier Service** (`/supplier/*`)
 - `GET  /suppliers`
-- `POST /tankers` `GET /tankers/owner` `PUT /tankers/<id>` `DELETE /tankers/<id>` `PATCH /tankers/<id>/status`
+- `GET  /tankers` `POST /tankers` `GET /tankers/owner` `PUT /tankers/<id>` `DELETE /tankers/<id>` `PATCH /tankers/<id>/status`
 - `GET  /owner/dashboard` `GET /owner/earnings`
+- `GET /internal/tankers/<id>` `PATCH /internal/tankers/<id>/status`
+- `GET /internal/suppliers/<id>` `POST /internal/suppliers/batch`
 
-**3. Booking Service** (`/bookings/*`) — Port 5004
+**3. Booking Service** (`/bookings/*`)
 - `POST /book_tanker` `GET /track_order/<id>` `PUT /update_order/<id>`
 - `POST /bookings` `GET /bookings/owner` `PATCH /bookings/<id>/status`
 - `POST /society_bulk_order`
 - `POST /create-payment-intent`
+- `GET /internal/owners/<id>/dashboard` `GET /internal/owners/<id>/earnings`
+- `GET /internal/societies/<id>/orders-summary`
 
-**4. IoT Analytics Service** (`/analytics/*`) — Port 5006
+**4. IoT Analytics Service** (`/analytics/*`)
 - `POST /log_reading`
 - `GET  /consumption_report` `GET /society_dashboard` `GET /conservation_summary`
 
-**5. Gamification Service** (`/gamification/*`) — Port 5005
+**5. Gamification Service** (`/gamification/*`)
 - `GET  /conservation_tips` `GET /challenges`
 - `POST /start_challenge/<id>` `GET /user_challenges` `PUT /update_challenge_progress/<id>`
 - `GET|POST /community/broadcasts`
 - `GET|POST /community/threads` `GET|POST /community/threads/<id>/comments`
+- `GET /internal/users/<id>/summary` `GET /internal/societies/<id>/impact`
 
 ---
 
@@ -243,8 +252,8 @@ JWT tokens are stateless — the server does not need to store session state to 
 | Layer | Technology | Rationale |
 |---|---|---|
 | Frontend | React + TypeScript + Vite | Fast dev server, type safety, zero-config bundling |
-| API Gateway | Nginx | Path-based routing, single ingress, correlation ID injection |
-| Microservices | Python / Flask (×5) | Lightweight, fits team familiarity, independently deployable |
+| API Gateway | Nginx | Path-based routing, single ingress point (:5001), correlation ID injection |
+| Microservices | Python / Flask (×5) | Lightweight, fits team familiarity, independently deployable (each runs on :5000 internally) |
 | Auth | JWT (JSON Web Tokens) | Stateless — scales horizontally without session affinity |
 | Payments | Stripe API | PCI compliance out of the box, fractional currency handling |
 | Cache | Redis (shared infrastructure) | Sub-millisecond session and query caching across all services |
@@ -366,7 +375,7 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_key
 
 ### Step 2: Start All Backend Services
 
-If you have data from an older monolith version, do a full reset first:
+If you have data from an older version, do a full reset first:
 
 ```bash
 docker compose down -v
@@ -379,13 +388,13 @@ docker compose up -d --build
 docker ps    # verify all containers are healthy
 ```
 
-This starts: PostgreSQL (with 5 logical DBs), Redis, all 5 Flask microservices, Nginx gateway, Dockerized frontend, Spark Master + Worker, Prometheus, and Grafana.
+This starts: PostgreSQL (with 5 logical DBs), Redis, all 5 Flask microservices, Nginx API Gateway, frontend, Spark Master + Worker, Prometheus, and Grafana.
+
+> **Note:** All microservices run on port 5000 internally and are not directly exposed. The Nginx API Gateway (port 5001) is the single entry point for all backend API calls.
 
 ---
 
 ### Step 3: Seed the Databases
-
-> ⚠️ The old `docker exec -it water_mgmt_backend python populate_db.py` command no longer works — the monolith container does not exist. Use the dedicated seeder instead.
 
 First run (or after code changes):
 
@@ -419,19 +428,21 @@ docker exec -it spark_master /opt/spark/bin/spark-submit `
   /opt/analytics/process_data.py
 ```
 
-This simulates the EventBridge-triggered batch job. Reads Parquet files from `data/raw/water_readings`, aggregates IoT metrics, and writes results to `iot_db`.
+This simulates the EventBridge-triggered batch job. If Parquet files exist in `data/raw/water_readings`, Spark reads and aggregates them; otherwise, it reads from the PostgreSQL `water_readings` table. Aggregated metrics are written to the `iot_db`.
 
 ---
 
 ### Step 5: Start the Frontend
 
-Frontend is now part of `docker-compose.yml` and starts automatically with the rest of the stack.
+The frontend is automatically started as part of `docker-compose up`. It runs on port 5173 and connects to the API Gateway at `http://localhost:5001`.
+
+To rebuild the frontend after code changes:
 
 ```bash
 docker compose up -d --build frontend
 ```
 
-Frontend runs at `http://localhost:5173` and calls the Nginx API Gateway at `http://localhost:5001`.
+The app is accessible at `http://localhost:5173`.
 
 ---
 
@@ -440,10 +451,11 @@ Frontend runs at `http://localhost:5173` and calls the Nginx API Gateway at `htt
 | Service | URL | Notes |
 |---|---|---|
 | Frontend | `http://localhost:5173` | React app served by Nginx container |
-| API Gateway | `http://localhost:5001` | All backend API routes |
-| Prometheus | `http://localhost:9090` | Metrics scraping |
-| Grafana | `http://localhost:3000` | Login: `admin` / `admin` |
-| Spark UI | `http://localhost:8080` | Master dashboard |
+| API Gateway | `http://localhost:5001` | Reverse proxy to all microservices |
+| Prometheus | `http://localhost:9090` | Metrics scraping and aggregation |
+| Grafana | `http://localhost:3000` | Dashboards: Login with `admin` / `admin` |
+| Spark UI | `http://localhost:8080` | Master node dashboard and job monitoring |
+| Redis Commander (optional) | N/A | Can be accessed via Redis client on `:6379` |
 
 ---
 
